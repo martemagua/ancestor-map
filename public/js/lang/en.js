@@ -129,5 +129,7 @@ export default {
   'err.person_missing': 'That person does not exist.',
   'err.union_missing': 'That union does not exist.',
   'err.child_is_partner': 'Someone cannot be a child of their own union.',
+  'err.tree_ring': 'Someone cannot be their own ancestor.',
+  'err.too_many_partners': 'A union has at most two partners — another marriage is its own union.',
   'err.import_format': 'This file is not an Ancestor Map export.',
 };

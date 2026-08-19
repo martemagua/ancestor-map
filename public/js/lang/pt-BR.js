@@ -129,5 +129,7 @@ export default {
   'err.person_missing': 'Essa pessoa não existe.',
   'err.union_missing': 'Essa união não existe.',
   'err.child_is_partner': 'Alguém não pode ser filho da própria união.',
+  'err.tree_ring': 'Ninguém pode ser o próprio ancestral.',
+  'err.too_many_partners': 'Uma união tem no máximo dois parceiros — outro casamento é uma nova união.',
   'err.import_format': 'Este arquivo não é uma exportação do Ancestor Map.',
 };

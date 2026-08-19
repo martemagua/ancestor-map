@@ -129,5 +129,7 @@ export default {
   'err.person_missing': 'Diese Person gibt es nicht.',
   'err.union_missing': 'Diese Verbindung gibt es nicht.',
   'err.child_is_partner': 'Jemand kann nicht Kind der eigenen Verbindung sein.',
+  'err.tree_ring': 'Jemand kann nicht der eigene Vorfahr sein.',
+  'err.too_many_partners': 'Eine Verbindung hat höchstens zwei Partner — eine weitere Ehe ist eine eigene Verbindung.',
   'err.import_format': 'Diese Datei ist kein Ancestor-Map-Export.',
 };
