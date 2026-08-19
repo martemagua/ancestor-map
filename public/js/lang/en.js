@@ -1,0 +1,133 @@
+// English — also the fallback language: a key missing elsewhere falls back to
+// this file. Flat keys; `{name}`-style placeholders are filled by t().
+// tests/i18n.test.js enforces that every key exists in all three files.
+export default {
+  // Dates (fuzzy dates are formatted by public/js/fuzzydate.js from these)
+  'date.months': 'January|February|March|April|May|June|July|August|September|October|November|December',
+  'date.dmy': '{month} {d}, {y}',
+  'date.my': '{month} {y}',
+  'date.circa': 'circa {v}',
+  'date.before': 'before {v}',
+  'date.after': 'after {v}',
+  'date.range': '{a}–{b}',
+
+  // Kinship fallbacks (constructed labels live in public/js/kinship.js)
+  'kin.self': 'that is you',
+  'kin.related': 'related ({n} steps)',
+  'kin.none': 'no known connection',
+  'kin.ancestor_far': 'ancestor, {g} generations back',
+  'kin.descendant_far': 'descendant, {g} generations on',
+
+  // Tabs
+  'tab.tree': 'Tree',
+  'tab.people': 'People',
+  'tab.stories': 'Stories',
+  'tab.places': 'Places',
+
+  // Common UI
+  'ui.save': 'Save',
+  'ui.cancel': 'Cancel',
+  'ui.delete': 'Delete',
+  'ui.edit': 'Edit',
+  'ui.close': 'Close',
+  'ui.add': 'Add',
+  'ui.search': 'Search',
+  'ui.settings': 'Settings',
+  'ui.logout': 'Log out',
+  'ui.login': 'Log in',
+  'ui.username': 'Username',
+  'ui.password': 'Password',
+  'ui.email': 'Email',
+  'ui.language': 'Language',
+  'ui.name': 'Name',
+  'ui.yes': 'Yes',
+  'ui.no': 'No',
+  'ui.ok': 'OK',
+  'ui.back': 'Back',
+  'ui.confirm_delete': 'Really delete?',
+
+  // Setup
+  'setup.title': 'Welcome to Ancestor Map',
+  'setup.intro': 'Create the first account — it becomes the admin account.',
+  'setup.create': 'Create account',
+
+  // Person basics (structural fields; registry fields are f.*)
+  'p.birth': 'Birth',
+  'p.death': 'Death',
+  'p.birth_place': 'Place of birth',
+  'p.death_place': 'Place of death',
+  'p.sex': 'Sex',
+  'sex.m': 'male',
+  'sex.f': 'female',
+  'sex.x': 'other',
+
+  // Registry fields
+  'f.notes': 'Notes — what you want to remember',
+  'f.notes_ph': 'Hypotheses, open questions, memories.',
+  'f.occupation': 'Occupation',
+  'f.occupation_ph': 'Blacksmith, teacher …',
+  'f.education': 'Education',
+  'f.religion': 'Religion',
+  'f.nationality': 'Nationality',
+  'f.birth_name': 'Birth name',
+  'f.nickname': 'Nickname',
+  'f.residence': 'Places lived',
+  'f.residence_ph': 'Hamburg (1920–1935), then São Paulo',
+  'f.burial_place': 'Burial place',
+  'f.cause_of_death': 'Cause of death',
+  'f.baptism': 'Baptism',
+  'f.tags': 'Keywords — separate with commas',
+  'f.tags_ph': 'Emigrant, musician',
+  'f.phone': 'Phone',
+  'f.email': 'Email',
+  'f.website': 'Website',
+  'f.pinned': 'Pinned',
+
+  // Form sections
+  'sec.leben': 'Life',
+  'sec.kontakt': 'Contact',
+
+  // Unions & children
+  'union.ehe': 'Marriage',
+  'union.partnerschaft': 'Partnership',
+  'union.unbekannt': 'Union',
+  'role.leiblich': 'biological',
+  'role.adoptiert': 'adopted',
+  'role.stief': 'stepchild',
+  'role.pflege': 'foster child',
+
+  // Free-form relationship kinds
+  'rel.pate': 'Godparent',
+  'rel.trauzeuge': 'Wedding witness',
+  'rel.freunde': 'Friends',
+  'rel.nachbarn': 'Neighbours',
+  'rel.kollegen': 'Colleagues',
+  'rel.sonstig': 'Connection',
+
+  // Account roles
+  'role.admin': 'Admin',
+  'role.editor': 'Editor',
+  'role.viewer': 'Viewer',
+
+  // Errors — the server sends these keys, the client renders them
+  'err.unexpected': 'Something went wrong. Try again in a moment.',
+  'err.unauthorized': 'Please log in.',
+  'err.forbidden': 'Your account lacks permission for that.',
+  'err.notfound': 'That does not exist (any more).',
+  'err.invalid': 'That input makes no sense like this.',
+  'err.name_required': 'A name is required.',
+  'err.rate_limited': 'Too many attempts — wait a moment.',
+  'err.login_failed': 'Username or password is wrong.',
+  'err.setup_done': 'Setup has already been completed.',
+  'err.username_taken': 'That username is taken.',
+  'err.password_short': 'The password needs at least 8 characters.',
+  'err.invite_invalid': 'This invite is invalid or expired.',
+  'err.last_admin': 'The last admin account cannot be removed.',
+  'err.self_demote': 'You cannot remove admin from your own account.',
+  'err.branch_ring': 'A branch cannot hang inside itself.',
+  'err.color_invalid': 'That is not a valid colour.',
+  'err.person_missing': 'That person does not exist.',
+  'err.union_missing': 'That union does not exist.',
+  'err.child_is_partner': 'Someone cannot be a child of their own union.',
+  'err.import_format': 'This file is not an Ancestor Map export.',
+};
