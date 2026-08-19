@@ -1,0 +1,14 @@
+# Local development / any plain Docker host. Builds from this folder.
+services:
+  ancestormap:
+    build: .
+    container_name: ancestormap
+    ports:
+      - "4322:4322"
+    environment:
+      TZ: Europe/Berlin
+      DATA_DIR: /data
+      BACKUP_KEEP: "30"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
