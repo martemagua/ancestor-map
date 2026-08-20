@@ -5,14 +5,10 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { loadPlaywright } from './pw.mjs';
 
-const require = createRequire(import.meta.url);
-let chromiumPkg;
-for (const name of ['playwright', '@playwright/test', '/opt/node22/lib/node_modules/playwright']) {
-  try { chromiumPkg = require(name); break; } catch { /* keep looking */ }
-}
+const chromiumPkg = await loadPlaywright();
 if (!chromiumPkg) { console.error('Playwright not found — skipping.'); process.exit(0); }
 const { chromium } = chromiumPkg;
 
