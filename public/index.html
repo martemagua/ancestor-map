@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<!-- Page zoom is off deliberately: the app is all gestures — pinching the
+     tree, panning the slippy map — and a pinch that lands a few pixels
+     outside the canvas zoomed the whole page instead, which reads as the app
+     breaking. Text size still works via the system/browser setting. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#F4F2ED" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15150F" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Ancestor Map">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="description" content="A living, touchable map of a family across generations.">
+<title>Ancestor Map</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+
+<div id="gate" class="hidden"></div>
+
+<div id="app" class="hidden">
+  <div id="views">
+
+    <!-- ------------------------------------------------------------- Baum -->
+    <section class="view" data-view="tree">
+      <div class="topbar">
+        <h1 data-t="tab.tree">Baum</h1>
+        <div id="proband" hidden></div>
+        <button id="btn-settings" class="btn sm" data-t-aria="ui.settings" aria-label="Einstellungen">⚙️</button>
+      </div>
+      <div class="chipbar" id="chipbar">
+        <div class="chipstrip" id="chips"></div>
+        <button id="chips-expand" aria-expanded="false" hidden>▾</button>
+      </div>
+      <div id="map-wrap">
+        <canvas id="map"></canvas>
+        <div class="maptools">
+          <button id="btn-fit" data-t-title="tool.fit">⤢</button>
+          <button id="btn-physics" class="on" data-t-title="tool.physics">🧲</button>
+          <button id="btn-edges" data-t-title="tool.edges">🕸️</button>
+          <button id="btn-zeit" data-t-title="tool.zeit">🕰️</button>
+          <button id="btn-shake" data-t-title="tool.shake">🎲</button>
+          <button id="btn-branches" data-t-title="br.title">🎨</button>
+        </div>
+        <button class="fab" id="fab" data-t-aria="add.title">+</button>
+        <div class="maphint" data-t="map.hint">Ziehen · zoomen · antippen</div>
+      </div>
+    </section>
+
+    <!-- --------------------------------------------------------- Menschen -->
+    <section class="view" data-view="people" hidden>
+      <div class="topbar">
+        <h1><span data-t="tab.people">Menschen</span> <span class="sub" id="people-count">0</span></h1>
+      </div>
+      <div class="searchbar">
+        <input id="search" type="search" data-t-ph="list.search_ph" autocomplete="off">
+      </div>
+      <div class="listctl" id="people-controls"></div>
+      <div class="scroll"><div id="people-list"></div></div>
+    </section>
+
+    <!-- ------------------------------------------------------ Geschichten -->
+    <section class="view" data-view="stories" hidden>
+      <div class="topbar"><h1 data-t="tab.stories">Geschichten</h1></div>
+      <div class="scroll"><div id="stories-list"></div></div>
+    </section>
+
+    <!-- ------------------------------------------------------------- Orte -->
+    <section class="view" data-view="places" hidden>
+      <div class="topbar"><h1 data-t="tab.places">Orte</h1></div>
+      <div class="scroll"><div id="places-list"></div></div>
+    </section>
+
+  </div>
+
+  <nav id="tabbar">
+    <button data-tab="tree" class="on"><span class="ico">🌳</span><span data-t="tab.tree">Baum</span></button>
+    <button data-tab="people"><span class="ico">👥</span><span data-t="tab.people">Menschen</span></button>
+    <button data-tab="stories"><span class="ico">🕯️</span><span data-t="tab.stories">Geschichten</span></button>
+    <button data-tab="places"><span class="ico">🗺️</span><span data-t="tab.places">Orte</span></button>
+  </nav>
+</div>
+
+<div id="scrim"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" inert></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>

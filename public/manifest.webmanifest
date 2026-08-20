@@ -1,0 +1,12 @@
+{
+  "name": "Ancestor Map",
+  "short_name": "Ancestors",
+  "description": "A living, touchable map of a family across generations.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F4F2ED",
+  "theme_color": "#A6743C",
+  "icons": [
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
