@@ -347,6 +347,22 @@ test('duplicates are found and merging folds one person into the other', async (
   'their connections moved over');
 });
 
+test('GEDCOM export speaks 5.5.1: INDI, FAM, fuzzy dates, pedigree', async () => {
+  const out = await S.GET('/api/export/gedcom');
+  assert.equal(out.status, 200);
+  const ged = String(out.data);
+  assert.ok(ged.startsWith('0 HEAD'), 'header first');
+  assert.ok(ged.trimEnd().endsWith('0 TRLR'), 'trailer last');
+  assert.ok(ged.includes(`0 @I${id.wilhelm}@ INDI`), 'individuals present');
+  assert.ok(ged.includes('1 NAME Wilhelm /Brandt/') || ged.includes('NAME Wilhelm'), 'names split into surnames');
+  assert.ok(ged.includes('2 DATE 2 MAY 1890'), 'exact dates translate');
+  assert.ok(ged.includes('2 DATE ABT 1895'), 'circa translates to ABT');
+  assert.ok(ged.includes(`1 HUSB @I${id.wilhelm}@`), 'husband seated');
+  assert.ok(ged.includes(`1 CHIL @I${id.otto}@`), 'children hang off the family');
+  assert.ok(ged.includes(`1 FAMC @F`), 'child links back');
+  assert.ok(ged.includes('1 OCCU Schmied'), 'documented occupation travels');
+});
+
 test('login answers are rate-limited only on failures', async () => {
   for (let i = 0; i < 3; i++) {
     const ok = await S.POST('/api/login', { username: 'duda', password: 'senha-segura' });

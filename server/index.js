@@ -291,6 +291,13 @@ on('GET', '/api/export', 'admin', ctx => {
   const stamp = new Date().toISOString().slice(0, 10);
   return raw(R.exportAll(), { 'Content-Disposition': `attachment; filename="ancestormap-${stamp}.json"` });
 });
+on('GET', '/api/export/gedcom', 'admin', async ctx => {
+  const { exportGedcom } = await import('./gedcom.js');
+  const stamp = new Date().toISOString().slice(0, 10);
+  return raw(exportGedcom(),
+    { 'Content-Disposition': `attachment; filename="ancestormap-${stamp}.ged"` },
+    'text/plain; charset=utf-8');
+});
 on('POST', '/api/import', 'admin', ctx => R.importAll(ctx.body.data || ctx.body, { replace: ctx.body.replace === true }));
 on('GET', '/api/backups', 'admin', () => listBackups());
 on('POST', '/api/backups', 'admin', () => runBackup('manual'));

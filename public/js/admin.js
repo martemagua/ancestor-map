@@ -94,8 +94,9 @@ function render() {
 
     <section>
       <h2>${esc(t('adm.data'))}</h2>
-      <div class="btnrow" style="max-width:560px">
+      <div class="btnrow" style="max-width:680px">
         <a class="btn" href="/api/export" download>${esc(t('adm.export'))}</a>
+        <a class="btn" href="/api/export/gedcom" download>GEDCOM</a>
         <button class="btn" data-backup>${esc(t('adm.backup_now'))}</button>
         <button class="btn" data-geo>${esc(t('adm.geo_go'))}</button>
       </div>
