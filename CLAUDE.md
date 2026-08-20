@@ -90,6 +90,9 @@ nodes.
 - **`PUBLIC_ROUTES` is a deny-list-free allow-list** — the only way past the
   auth gate without a session. Same discipline for `TOKEN_ROUTES` (GET-only,
   for API tokens).
+- **`/mcp` (server/mcp.js) is token-only and read-only** — JSON-RPC for AI
+  agents, no cookie path on purpose, tools can ask anything and change
+  nothing. `server/gedcom.js` is the other interop door (admin, export only).
 - **Boot migrations**: schema uses `CREATE TABLE IF NOT EXISTS`; new columns
   go through `ensureColumn()`; data migrations are meta-flagged transactions
   (check flag → one transaction → set flag).

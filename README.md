@@ -51,6 +51,14 @@ repository. Everything below is the seeded fictional demo family.
   invitation links that carry their role, per-account notes and hypotheses
   layered over the shared documented record, read-only API tokens for
   automations, nightly backups, and full JSON export/import.
+- **GEDCOM export.** Your data walks out whole into any genealogy tool —
+  fuzzy dates, adoption pedigrees and the documented record included.
+- **Ask your tree anything.** A built-in read-only **MCP server** lets AI
+  agents query the family over an API token:
+  `claude mcp add --transport http ancestormap https://your-host/mcp
+  --header "Authorization: Bearer am_…"` — then ask "how is Maria related
+  to me?" or "what do we know about Wilhelm's years in Brazil?". Nothing
+  leaves your machine unless your own agent carries it.
 
 ![People list with computed kinship](docs/people.png)
 

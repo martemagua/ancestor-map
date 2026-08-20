@@ -13,11 +13,13 @@ history lives in the git log. The full product vision is in `PITCH.md`.
 - **Immich integration** — per-user libraries, face links, thumbnail proxy.
   Friend-Map's `server/immich.js` is the ~90% starting point; the pairwise
   sharing model must generalize to N users.
-- **MCP server** — read-only tools (`find_person`, `person_facts`,
-  `relationship_between`, `search_stories`) over the api_tokens gate; write
-  tools as explicit per-token opt-in.
-- **GEDCOM import/export** — export first (anti-lock-in), import feeding the
-  duplicate finder + merge.
+- **MCP write tools** — the read-only MCP server exists (`/mcp`, five
+  tools over the api_tokens gate); write tools (`add_note`, `add_story`)
+  should be an explicit per-token opt-in, which needs a `scope` column on
+  `api_tokens` first.
+- **GEDCOM import** — export exists (`/api/export/gedcom`); import should
+  land people through the normal endpoints and feed the duplicate finder +
+  merge afterwards.
 - **E-mail** — invites and password resets by mail (likely nodemailer);
   until then invite links are copied from /admin and resets use the CLI
   escape hatch.

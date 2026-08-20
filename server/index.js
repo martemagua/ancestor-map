@@ -350,6 +350,19 @@ const server = http.createServer(async (req, res) => {
   try {
     if (p === '/healthz') return send(res, 200, { ok: true, uptime: Math.round(process.uptime()), ...VERSION });
 
+    // The MCP endpoint: JSON-RPC for AI agents, authenticated by API token
+    // only — no cookies, so a page in a browser can never reach it by
+    // accident, and the tools behind it are read-only by construction.
+    if (p === '/mcp') {
+      if (req.method !== 'POST') return send(res, 405, { error: 'err.invalid' });
+      const agent = userFromToken(req);
+      if (!agent) return send(res, 401, { error: 'err.unauthorized' });
+      const { handleMcp } = await import('./mcp.js');
+      const out = handleMcp(await readBody(req), agent);
+      if (out === null) { res.writeHead(202); return res.end(); }
+      return send(res, 200, out);
+    }
+
     const isApi = p.startsWith('/api/');
     if (!isApi) {
       if (p === '/admin' || p === '/admin/') return servePage('admin.html', res);
