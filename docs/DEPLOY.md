@@ -39,9 +39,21 @@ packages start *private* even on a public repository. Once, do either:
 
 ## Installing an instance (TrueNAS SCALE 24.10 "Electric Eel" or newer)
 
-1. **Dataset**: Storage → your pool → *Add Dataset* →
-   `apps/ancestormap-test` (and later `apps/ancestormap`). Ownership: the
-   apps user `568` (Dataset → Permissions → set user/group `apps`).
+1. **Dataset**: Storage → your pool → *Add Dataset* → `ancestormap-test`
+   (and later `ancestormap`). Then fix its permissions — this is the step
+   that fails the deploy if it is skipped, because the container runs as an
+   unprivileged user and a fresh dataset belongs to root.
+
+   Datasets → the new dataset → *Permissions* → **Edit** (ACL editor):
+   - **Owner**: `apps` · **Owner Group**: your app-data group (`apps-data`)
+   - Tick *Apply Owner* and *Apply Group*
+   - Entries: `owner@` → Full Control, `group@` → Modify
+   - Tick **Apply permissions recursively** → *Save Access Control List*
+
+   Whatever user and group you land on must match the `user:` line in the
+   compose file — `568:3000` in the examples means uid `apps`, gid
+   `apps-data`. If the app cannot write, it now says so in its log in one
+   sentence, naming the uid/gid it is running as.
 2. **App**: Apps → *Discover Apps* → top-right ⋮ → **Install via YAML** →
    name it `ancestormap-test` → paste `docker-compose.truenas-test.yml` →
    fix the `volumes:` line to your pool's real path → Save.
@@ -75,6 +87,26 @@ nightly self-backups (JSON + a consistent `.db` copy, pruned to
 `BACKUP_KEEP`). Snapshot that dataset with ZFS and you have the whole story.
 A restore is: point a fresh instance at the dataset — or import a JSON
 backup through `/admin`.
+
+## When the app won't start
+
+Always read the log first — Apps → the app → *Logs*, or in a shell:
+
+```
+sudo docker logs ancestormap-test --tail 40
+```
+
+Three things it is almost always saying:
+
+| In the log | What it means |
+|---|---|
+| `The data directory /data is not writable…` | The dataset's permissions — see step 1 above. The line names the uid/gid the container runs as, which must match the dataset's owner/group. |
+| `denied` / `unauthorized` while pulling | The GHCR package is private. Make it public (Profile → Packages → *ancestor-map* → Package settings → Change visibility), or `docker login ghcr.io -u <you>` on the NAS with a `read:packages` token. |
+| `manifest unknown` | That tag has not been built yet. Check the branch's run under the repo's *Actions* tab, then update the app again. |
+
+Package visibility is separate from repository visibility: a public repo can
+still have a private package, and a private repo's package can be shared.
+The *Packages* page on your profile is where each one is set.
 
 ## If you're locked out
 
