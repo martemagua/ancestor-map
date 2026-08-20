@@ -398,23 +398,20 @@ export function otherViewsOf(personId, key) {
 
 // ------------------------------------------------------------------ display
 
+/**
+ * The branch colour, or null for the proband (drawn in ink) and for the
+ * unbranched — callers supply the --ungrouped token themselves, because a
+ * hex here would go stale the moment the theme flips (CLAUDE.md rule).
+ */
 export function colorOf(p) {
-  if (!p) return UNGROUPED;
-  if (p.id === S.probandId) return null;           // the centre is drawn in ink
+  if (!p || p.id === S.probandId) return null;
   const first = branchesWithParents(p)[0];
-  const b = first ? S.branchById[first] : null;
-  return b ? b.color : UNGROUPED;
+  return first ? (S.branchById[first]?.color ?? null) : null;
 }
 
 export function initials(name) {
   const parts = String(name || '?').trim().split(/\s+/).slice(0, 2);
   return parts.map(w => [...w][0] || '').join('').toUpperCase() || '?';
-}
-
-export function avatarColor(p) {
-  const c = colorOf(p);
-  if (c) return c;
-  return getComputedStyle(document.documentElement).getPropertyValue('--ink').trim() || '#232320';
 }
 
 /** The years line under a name: "1885–1972", "um 1885", "* 1920". */

@@ -34,8 +34,9 @@ export function fieldsByPerson(userId) {
  * value nobody has personalised should appear once.
  */
 export function otherViews(userId) {
+  // fieldsByPerson() already lays the asker's rows over the shared ones, so
+  // "what you see" is one lookup — no second shared-row scan needed.
   const mine = fieldsByPerson(userId);
-  const shared = fieldsByPerson(null);
   const others = [];
   const people = db.prepare(`SELECT u.id, COALESCE(p.name, u.username) AS name
     FROM users u LEFT JOIN persons p ON p.id = u.person_id
@@ -46,7 +47,7 @@ export function otherViews(userId) {
     const byPerson = {};
     for (const r of rows) {
       if (fieldOf(r.key)?.scope !== 'ich') continue;
-      const seen = mine[r.person_id]?.[r.key] ?? shared[r.person_id]?.[r.key] ?? '';
+      const seen = mine[r.person_id]?.[r.key] ?? '';
       if (r.value && r.value !== seen) (byPerson[r.person_id] ||= {})[r.key] = r.value;
     }
     if (Object.keys(byPerson).length) others.push({ user_id: who.id, name: who.name, fields: byPerson });

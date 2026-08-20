@@ -84,6 +84,36 @@ test('a person arrives connected: partner, child of union, child of person', asy
   assert.equal(klara.birth_year, 1895);
 });
 
+test('adding the second parent completes the existing family', async () => {
+  // Karl hangs on a father-only union. Adding a mother as 'parent_of' must
+  // seat her in that union, not open a parallel one.
+  const mother = await S.POST('/api/persons', {
+    name: 'Grete', sex: 'f', birth: '1925',
+    connect: { type: 'parent_of', id: id.karl },
+  });
+  assert.equal(mother.status, 200);
+  id.grete = mother.data.id;
+
+  const graph = (await S.GET('/api/graph')).data;
+  const karlsUnions = graph.children.filter(c => c.child_id === id.karl).map(c => c.union_id);
+  assert.equal(karlsUnions.length, 1, 'still one parent union');
+  const partners = graph.union_partners.filter(r => r.union_id === karlsUnions[0]).map(r => r.person_id);
+  assert.deepEqual(partners.sort((a, b) => a - b), [id.otto, id.grete].sort((a, b) => a - b));
+
+  // A third parent is a step-parent: their own union, both seats taken here.
+  const step = await S.POST('/api/persons', {
+    name: 'Stief', sex: 'm', connect: { type: 'parent_of', id: id.karl },
+  });
+  assert.equal(step.status, 200);
+  const after = (await S.GET('/api/graph')).data;
+  assert.equal(after.children.filter(c => c.child_id === id.karl).length, 2);
+
+  // The direct seat-a-partner route refuses a full union and rings.
+  const full = await S.POST(`/api/unions/${karlsUnions[0]}/partners`, { person_id: id.wilhelm });
+  assert.equal(full.status, 400);
+  assert.equal(full.data.error, 'err.too_many_partners');
+});
+
 test('kinship answers in all three languages', async () => {
   const out = await S.GET(`/api/kinship?from=${id.karl}&to=${id.wilhelm}`);
   assert.equal(out.status, 200);

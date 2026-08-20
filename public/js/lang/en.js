@@ -214,6 +214,7 @@ export default {
   'union.ended': 'Ended',
   'union.note': 'Note',
   'union.delete': 'Delete union',
+  'union.add_partner': 'Add the second parent / partner',
 
   // Relationship form
   'relf.title': 'Describe a connection',

@@ -214,6 +214,7 @@ export default {
   'union.ended': 'Fim',
   'union.note': 'Nota',
   'union.delete': 'Excluir união',
+  'union.add_partner': 'Adicionar o segundo pai/mãe ou parceiro(a)',
 
   // Ligações livres
   'relf.title': 'Descrever ligação',

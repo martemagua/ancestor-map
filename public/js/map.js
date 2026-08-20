@@ -63,7 +63,9 @@ export function initMap(canvas, opts = {}) {
   cv.addEventListener('pointerdown', onDown);
   cv.addEventListener('pointermove', onMove);
   cv.addEventListener('pointerup', onUp);
-  cv.addEventListener('pointercancel', onUp);
+  // A cancelled pointer (incoming call, palm rejection, OS gesture) is not a
+  // tap — routing it through onUp opened cards nobody asked for.
+  cv.addEventListener('pointercancel', onCancel);
   cv.addEventListener('wheel', onWheel, { passive: false });
   cv.addEventListener('touchstart', onTouchStart, { passive: false });
   cv.addEventListener('touchmove', onTouchMove, { passive: false });
@@ -381,6 +383,9 @@ function schedulePersist() {
 }
 
 async function persistPositions() {
+  // Viewers may rearrange their own screen, but the write route is editors'
+  // only — posting anyway would 403 after every settle, forever.
+  if (!['editor', 'admin'].includes(S.user?.role)) return;
   const payload = S.persons.filter(p => p.x != null && !isNaN(p.x) && !isNaN(p.y))
     .map(p => ({ id: p.id, x: p.x, y: p.y }));
   if (!payload.length) return;
@@ -530,7 +535,7 @@ function drawScene(people) {
     ctx.globalAlpha = dimmed ? 0.16 : dead ? 0.82 : 1;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = p.id === S.probandId ? ink : colorOf(p);
+    ctx.fillStyle = p.id === S.probandId ? ink : (colorOf(p) || css('--ungrouped') || '#9A968C');
     ctx.fill();
     ctx.lineWidth = 2;
     ctx.strokeStyle = paper;
@@ -895,6 +900,12 @@ function onMove(e) {
     draw();
   }
   pointerStart = [sx, sy];
+}
+
+function onCancel() {
+  clearTimeout(pressTimer);
+  pressFired = false;
+  drag = null; tapCandidate = null; dragMoved = false;
 }
 
 function onUp() {

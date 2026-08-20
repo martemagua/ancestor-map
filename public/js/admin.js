@@ -3,19 +3,10 @@
 // every route it calls needs the admin role; this page just draws it.
 import { api } from './api.js';
 import { t, setLang, detectLang } from './i18n.js';
+import { escapeHtml as esc } from './store.js';
+import { toast } from './ui.js';
 
 const $ = sel => document.querySelector(sel);
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => (
-  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-));
-
-function toast(message) {
-  const el = $('#toast');
-  el.textContent = message;
-  el.classList.add('show');
-  clearTimeout(el._timer);
-  el._timer = setTimeout(() => el.classList.remove('show'), 2600);
-}
 
 const state = { users: [], invites: [], backups: [], duplicates: [], stats: null, settings: null, graph: null };
 

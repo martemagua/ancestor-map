@@ -51,9 +51,18 @@ function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
+    let tooBig = false;
     req.on('data', c => {
+      if (tooBig) return;                 // keep draining, stop buffering
       size += c.length;
-      if (size > MAX_BODY) { reject(Object.assign(new Error('err.invalid'), { status: 413 })); req.destroy(); return; }
+      if (size > MAX_BODY) {
+        // Reject without destroying the socket — a torn-down connection
+        // turns the 413 into a bare network error in the browser.
+        tooBig = true;
+        chunks.length = 0;
+        reject(Object.assign(new Error('err.invalid'), { status: 413 }));
+        return;
+      }
       chunks.push(c);
     });
     req.on('end', () => {
@@ -148,15 +157,19 @@ const TOKEN_ROUTES = new Set([
 on('GET', '/api/session', 'public', ctx => R.routeSession(ctx));
 on('POST', '/api/setup', 'public', ctx => R.routeSetup(ctx.body));
 on('POST', '/api/login', 'public', ctx => {
-  throttle(ctx.req, 'login');
+  // Throttled per IP *and* username: forgiving the whole IP on any success
+  // would let one valid account (an invited viewer, say) reset the counter
+  // between guesses at somebody else's.
+  const who = `login:${String(ctx.body.username || '').trim().toLowerCase().slice(0, 60)}`;
+  throttle(ctx.req, who);
   let out;
   try {
     out = R.routeLogin(ctx.body, ctx.res, ctx.secure);
   } catch (err) {
-    if (err.status === 401) countAttempt(ctx.req, 'login');   // only a wrong password counts
+    if (err.status === 401) countAttempt(ctx.req, who);   // only a wrong password counts
     throw err;
   }
-  forgiveAttempts(ctx.req, 'login');
+  forgiveAttempts(ctx.req, who);
   return out;
 });
 on('POST', '/api/logout', 'viewer', ctx => R.routeLogout(readCookie(ctx.req, COOKIE_NAME), ctx.res));
@@ -220,6 +233,8 @@ on('PUT', /^\/api\/unions\/(\d+)$/, 'editor', ctx => R.updateUnion(ctx.params[0]
 on('DELETE', /^\/api\/unions\/(\d+)$/, 'editor', ctx => R.deleteUnion(ctx.params[0]));
 on('POST', /^\/api\/unions\/(\d+)\/children$/, 'editor', ctx =>
   R.addChild(ctx.params[0], ctx.body.child_id, ctx.body.role));
+on('POST', /^\/api\/unions\/(\d+)\/partners$/, 'editor', ctx =>
+  R.addPartner(ctx.params[0], ctx.body.person_id));
 on('DELETE', /^\/api\/unions\/(\d+)\/children\/(\d+)$/, 'editor', ctx =>
   R.removeChild(ctx.params[0], ctx.params[1]));
 

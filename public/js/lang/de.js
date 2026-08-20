@@ -214,6 +214,7 @@ export default {
   'union.ended': 'Ende',
   'union.note': 'Notiz',
   'union.delete': 'Verbindung löschen',
+  'union.add_partner': 'Zweiten Elternteil / Partner:in aufnehmen',
 
   // Relationship form
   'relf.title': 'Verbindung beschreiben',

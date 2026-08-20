@@ -314,8 +314,20 @@ export function createPerson(body, userId = 0) {
         addChild(unionForParent(other), id, c.role);
       } else if (c.type === 'parent_of') {
         if (!personExists(other)) throw bad('err.person_missing');
-        const unionId = createUnionRow({ partners: [id], kind: c.kind }).id;
-        addChild(unionId, other, c.role);
+        // "Add the mother" after the father exists must complete *that*
+        // family, not open a parallel one: a child with exactly one parent
+        // union that still has a free seat gets the new parent as its second
+        // partner. Anything else — no union yet, or both seats taken (a
+        // step-parent) — is honestly a new union.
+        const seats = db.prepare(`SELECT c.union_id, COUNT(up.person_id) partners
+          FROM children c LEFT JOIN union_partners up ON up.union_id = c.union_id
+          WHERE c.child_id=? GROUP BY c.union_id`).all(other);
+        if (seats.length === 1 && seats[0].partners === 1) {
+          addPartner(seats[0].union_id, id);
+        } else {
+          const unionId = createUnionRow({ partners: [id], kind: c.kind }).id;
+          addChild(unionId, other, c.role);
+        }
       }
     }
     for (const link of Array.isArray(body.relate) ? body.relate : []) {
@@ -407,6 +419,27 @@ function createUnionRow({ partners = [], kind, started = '', ended = '', note = 
 }
 
 export const createUnion = body => tx(() => createUnionRow(body));
+
+/** Seat one more partner in a union — the "add the second parent" move. */
+export function addPartner(unionId, personId) {
+  const uid = Number(unionId), pid = Number(personId);
+  if (!unionExists(uid)) throw bad('err.union_missing');
+  if (!personExists(pid)) throw bad('err.person_missing');
+  const seated = db.prepare('SELECT person_id FROM union_partners WHERE union_id=?').all(uid);
+  if (seated.some(r => r.person_id === pid)) return { ok: true };
+  if (seated.length >= 2) throw bad('err.too_many_partners');
+  if (db.prepare('SELECT 1 FROM children WHERE union_id=? AND child_id=?').get(uid, pid)) {
+    throw bad('err.child_is_partner');
+  }
+  db.prepare('INSERT INTO union_partners (union_id,person_id) VALUES (?,?)').run(uid, pid);
+  try {
+    assertNoAncestorRing(uid);
+  } catch (err) {
+    db.prepare('DELETE FROM union_partners WHERE union_id=? AND person_id=?').run(uid, pid);
+    throw err;
+  }
+  return { ok: true };
+}
 
 export function updateUnion(id, body) {
   if (!unionExists(id)) throw gone();
@@ -926,9 +959,14 @@ export function upcoming(days = 60) {
     const parsed = /^(\d{1,4})-(\d{2})-(\d{2})$/.exec(p.birth);
     if (!parsed) continue;                         // fuzzy birthdays have no day to ring on
     const [, y, m, d] = parsed.map(Number);
-    let next = new Date(now.getFullYear(), m - 1, d);
+    // A Feb-29 birthday rings on Feb 28 in common years — Date would quietly
+    // roll it to March 1 instead, which no leapling calls their birthday.
+    const isLeap = year => (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+    const ring = year => (m === 2 && d === 29 && !isLeap(year)
+      ? new Date(year, 1, 28) : new Date(year, m - 1, d));
     const today0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    if (next < today0) next = new Date(now.getFullYear() + 1, m - 1, d);
+    let next = ring(now.getFullYear());
+    if (next < today0) next = ring(now.getFullYear() + 1);
     const in_days = Math.round((next - today0) / 864e5);
     if (in_days > days) continue;
     out.push({ person_id: p.id, name: p.name, date: localISOFrom(next), in_days, turns: next.getFullYear() - y });

@@ -87,7 +87,7 @@ export function toast(message) {
 
 export function avatarHtml(p, size = '') {
   const cls = `avatar ${size}`.trim();
-  const bg = p.id === S.probandId ? 'var(--ink)' : colorOf(p);
+  const bg = p.id === S.probandId ? 'var(--ink)' : (colorOf(p) || 'var(--ungrouped)');
   return `<span class="${cls}" style="background:${escapeHtml(bg)}">${escapeHtml(initials(p.name))}</span>`;
 }
 
@@ -601,6 +601,13 @@ export function openUnionForm(unionId) {
     <label class="field"><span>${escapeHtml(t('union.note'))}</span>
       <input data-f="note" value="${escapeHtml(u.note || '')}"></label>
 
+    ${partners.length < 2 ? `
+    <div class="lbl" style="margin-top:18px">${escapeHtml(t('union.add_partner'))}</div>
+    <div class="linkrow">
+      <div class="ppick" data-newpartner></div>
+      <button class="btn sm" data-addpartner>+</button>
+    </div>` : ''}
+
     <div class="lbl" style="margin-top:18px">${escapeHtml(t('card.children'))}</div>
     ${kids.map(o => `<div class="relrow"><span class="relmain">${avatarHtml(o, 'sm')}
       <span class="nm">${escapeHtml(o.name)}</span></span>
@@ -618,6 +625,18 @@ export function openUnionForm(unionId) {
     onMount(root) {
       const exclude = [...unionPartners(unionId), ...unionChildren(unionId)];
       const picker = personPicker(root.querySelector('[data-newchild]'), { exclude });
+      const partnerHost = root.querySelector('[data-newpartner]');
+      if (partnerHost) {
+        const partnerPicker = personPicker(partnerHost, { exclude });
+        root.querySelector('[data-addpartner]').onclick = async () => {
+          if (!partnerPicker.value) return;
+          try {
+            await api.post(`/api/unions/${unionId}/partners`, { person_id: partnerPicker.value });
+            await refresh();
+            openUnionForm(unionId);
+          } catch (err) { toast(err.message); }
+        };
+      }
 
       root.querySelector('[data-save]').onclick = async () => {
         try {

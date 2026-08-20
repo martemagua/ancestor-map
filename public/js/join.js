@@ -3,13 +3,11 @@
 // gets to choose it.
 import { api } from './api.js';
 import { t, setLang, detectLang, LANGS, LANG_NAMES, getLang } from './i18n.js';
+import { escapeHtml as esc } from './store.js';
 
 setLang(detectLang(navigator.languages || [navigator.language]));
 
 const gate = document.getElementById('gate');
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => (
-  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-));
 
 const token = new URLSearchParams(location.search).get('token') || '';
 
