@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { S, reindex } from '../public/js/store.js';
 import {
-  indexGenerations, genY, indexYears, zeitY, zeitBase, edgeRoom, labelEarned, ROW,
+  indexGenerations, genY, indexYears, zeitY, zeitBase, edgeRoom, labelEarned, shelfSpan, ROW,
 } from '../public/js/map.js';
 import { computeLayout, buildCells, reorderRow } from '../public/js/layout.js';
 
@@ -187,7 +187,23 @@ test('nobody overlaps anybody, and children hang under their own union', () => {
   // Otto and Ana's only child sits under the middle of their bar.
   const union = out.unions.find(u => u.id === 103);
   const karl = out.people.get(12);
-  assert.ok(Math.abs(union.x - karl.x) < 60, 'the child is centred under its parents');
+  assert.ok(Math.abs(union.x - karl.x) < 30, 'the child is centred under its parents');
+});
+
+test('the arrangement settles — no descent line is left with a kink in it', () => {
+  // The placement passes shrink their step, so the layout stops somewhere
+  // definite. Under a constant step the rows go on nudging each other apart
+  // for hundreds of passes and the chart is really just a picture of where
+  // the loop was cut off — which shows up here as anchors drifting off the
+  // middle of their children.
+  const people = fixture();
+  const out = layoutOf(people);
+  for (const u of out.unions) {
+    if (!u.kids.length) continue;
+    const middle = u.kids.reduce((s, id) => s + out.people.get(id).x, 0) / u.kids.length;
+    assert.ok(Math.abs(u.x - middle) < 30,
+      `union ${u.id} leaves its line ${Math.round(Math.abs(u.x - middle))} off its children`);
+  }
 });
 
 test('a hand-arranged row keeps the order it was given', () => {
@@ -277,6 +293,19 @@ test('two sibling bars side by side get different heights', () => {
 
   // The grandparents' bar is alone in its own band and needs no second lane.
   assert.equal(out.unions.find(u => u.id === 1).lanes, 1);
+});
+
+test('the sibling bar always reaches back to its own union', () => {
+  // An only child sitting off to the side is the case that broke: the drop
+  // from the parents and the drop onto the child are two separate verticals,
+  // and without a bar between them the line simply stops in mid-air.
+  assert.deepEqual(shelfSpan(100, [160]), [100, 160], 'out to an only child on the right');
+  assert.deepEqual(shelfSpan(100, [40]), [40, 100], 'and to one on the left');
+  // The ordinary case is unchanged: the anchor already sits over the brood.
+  assert.deepEqual(shelfSpan(100, [40, 100, 160]), [40, 160]);
+  // A child exactly under the anchor needs no bar at all, and says so.
+  const [l, r] = shelfSpan(100, [100]);
+  assert.equal(r - l, 0);
 });
 
 test('a thread earns its words only near fully drawn', () => {

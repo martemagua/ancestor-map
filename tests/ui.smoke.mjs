@@ -124,6 +124,30 @@ try {
     if (!painted) throw new Error('tree canvas is blank');
   });
 
+  // The force-simulation build wrote coordinates into persons.x/y. They
+  // describe an arrangement that no longer exists, so a chart that starts
+  // people from them opens as a heap and only tidies itself once something
+  // happens to relayout it.
+  await step('a saved position from the old build does not bunch the tree', async () => {
+    await page.evaluate(async () => {
+      const { S } = await import('/js/store.js');
+      await fetch('/api/positions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(S.persons.map(p => ({ id: p.id, x: 4000, y: 4000 }))),
+      });
+    });
+    await page.reload();
+    await page.waitForSelector('#app:not(.hidden)', { timeout: 5000 });
+    await page.waitForTimeout(600);
+    const stray = await page.evaluate(async () => {
+      const { S } = await import('/js/store.js');
+      return S.persons.filter(p => p.tx != null && Math.abs(p.x - p.tx) > 1)
+        .map(p => `${p.name} at ${Math.round(p.x)} instead of ${Math.round(p.tx)}`);
+    });
+    if (stray.length) throw new Error(`on load, not where the layout puts them: ${stray.join('; ')}`);
+  });
+
   // Dragging someone is meant to lift them right out of the chart — sideways
   // and up and down both — and then drop them back onto their own row. The
   // modules are pulled in by the same URL the app loaded them from, so this
@@ -197,9 +221,18 @@ try {
     await page.waitForSelector('#app:not(.hidden)', { timeout: 5000 });
   });
 
-  await step('the viewer sees no editing controls', async () => {
-    const fabHidden = await page.evaluate(() => document.getElementById('fab').hidden);
-    if (!fabHidden) throw new Error('a viewer got the add button');
+  // Checked the instant the shell appears, not after everything has loaded:
+  // an add button a viewer sees for half a second is still an add button.
+  await step('the viewer sees no editing controls, from the first frame', async () => {
+    const shown = await page.evaluate(() => {
+      const hidden = id => document.getElementById(id).hidden;
+      return ['fab', 'btn-arrange'].filter(id => !hidden(id));
+    });
+    if (shown.length) throw new Error(`a viewer got ${shown.join(', ')}`);
+    await page.reload();
+    await page.waitForSelector('#app:not(.hidden)');
+    const early = await page.evaluate(() => document.getElementById('fab').hidden);
+    if (!early) throw new Error('the add button is on screen before the role is applied');
   });
 
   await step('no console errors along the way', async () => {

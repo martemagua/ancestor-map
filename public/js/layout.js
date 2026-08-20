@@ -26,6 +26,8 @@ export const ROW = 190;          // world units between generation rows
 const COUPLE_GAP = 96;           // between two spouses in one cell
 const CELL_GAP = 62;             // between neighbouring cells
 const DOT = 30;                  // nominal width of one person
+const PASSES = 60;               // placement passes
+const DECAY = 0.93;              // how fast each pass's step shrinks
 
 const half = cell => (cell.people.length > 1 ? COUPLE_GAP / 2 + DOT / 2 : DOT / 2);
 
@@ -294,7 +296,15 @@ export function computeLayout(people, ctx) {
     for (const c of row) { c.x = x; x += half(c) * 2 + CELL_GAP; }
   }
   const gens = [...layers.keys()].sort((a, b) => b - a);
-  for (let pass = 0; pass < 40; pass++) {
+  // The step shrinks as the passes go by, and that is what makes the
+  // arrangement an answer rather than an accident. A constant step keeps
+  // creeping: rows go on nudging each other outward for hundreds of passes,
+  // so whatever the chart looks like is really a statement about where the
+  // loop was stopped, and a family sits a little wider apart for no reason
+  // anybody could point at. Decaying, the total movement is bounded, the
+  // last passes barely move at all, and running it longer changes nothing.
+  for (let pass = 0; pass < PASSES; pass++) {
+    const step = 0.55 * DECAY ** pass;
     // Alternate the sweep direction. Walking the generations the same way
     // every time leaves each row reading positions its neighbours have not
     // caught up to yet, and that lag settles into a permanent lean.
@@ -304,7 +314,7 @@ export function computeLayout(people, ctx) {
         if (!c.pull.length) continue;
         let sum = 0, weight = 0;
         for (const { w, at } of c.pull) { sum += at() * w; weight += w; }
-        c.x += (sum / weight - c.x) * 0.5;
+        c.x += (sum / weight - c.x) * step;
       }
       // Re-sorting by x would let a pull carry a cell past its neighbour and
       // undo the crossing work; the order the sweeps settled on stands, and

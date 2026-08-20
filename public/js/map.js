@@ -190,6 +190,20 @@ export function edgeRoom(r, a, b, scale, all = false) {
 }
 
 /** A thread's words cost more than its line — they come once it is nearly full. */
+/**
+ * How far the sibling bar has to reach: across every child *and* out to the
+ * union's own anchor.
+ *
+ * Spanning only the children breaks the line whenever the anchor is not
+ * above them — an only child who sits a little to the side of their parents
+ * then gets two verticals with nothing joining them, which is the one thing
+ * a descent line must never look like. With two or more children the anchor
+ * is nearly always inside the span already, which is why this only showed up
+ * on single children.
+ */
+export const shelfSpan = (anchorX, kidXs) =>
+  [Math.min(anchorX, ...kidXs), Math.max(anchorX, ...kidXs)];
+
 export const labelEarned = (r, a, b, scale, all = false) =>
   scale > 0.9 && edgeRoom(r, a, b, scale, all) >= 0.85;
 
@@ -218,8 +232,14 @@ function rebuild(people) {
     if (!seat) continue;
     p.tx = seat.x; p.ty = seat.y;
     // Somebody arriving for the first time starts where they belong rather
-    // than sliding in from a corner of the world.
-    if (p.x == null || Number.isNaN(p.x)) { p.x = seat.x; p.y = seat.y; }
+    // than sliding in from a corner of the world — and "arriving" means the
+    // map has never seated them, not that they have no coordinates. Persons
+    // still carry x/y from the days of the force simulation, and those
+    // describe an arrangement that no longer exists: trusted as a starting
+    // point they left the whole tree in a heap until something happened to
+    // relayout it. Only a position this map itself put someone in is worth
+    // sliding from.
+    if (!p._seated) { p.x = seat.x; p.y = seat.y; p._seated = true; }
   }
   layoutDirty = false;
 }
@@ -371,10 +391,8 @@ function drawScene(people) {
     ctx.beginPath();
     ctx.moveTo(anchor[0], anchor[1]);
     ctx.lineTo(anchor[0], shelf);
-    if (kidPts.length > 1) {
-      ctx.moveTo(Math.min(...kidPts.map(({ pt }) => pt[0])), shelf);
-      ctx.lineTo(Math.max(...kidPts.map(({ pt }) => pt[0])), shelf);
-    }
+    const [barL, barR] = shelfSpan(anchor[0], kidPts.map(({ pt }) => pt[0]));
+    if (barR - barL > 0.5) { ctx.moveTo(barL, shelf); ctx.lineTo(barR, shelf); }
     ctx.stroke();
     ctx.restore();
 

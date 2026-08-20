@@ -138,6 +138,13 @@ async function logout() {
 
 async function startApp() {
   localizeShell();
+  // What a viewer may not do is decided before the app is shown. Revealing
+  // the shell first and hiding the editing controls after the data has
+  // loaded flashes an add button past every viewer on every load — and it is
+  // a promise the server would only refuse.
+  const fab = $('#fab');
+  const arrange = $('#btn-arrange');
+  fab.hidden = arrange.hidden = !canEdit();
   $('#app').classList.remove('hidden');
   loadPeopleView();
   await loadSettings();
@@ -155,9 +162,7 @@ async function startApp() {
 
   fitView();
 
-  const fab = $('#fab');
   if (canEdit()) fab.onclick = () => openQuickAdd({});
-  else fab.hidden = true;
 
   $('#btn-fit').onclick = () => fitView();
   $('#btn-edges').onclick = e => {
@@ -171,13 +176,12 @@ async function startApp() {
     e.currentTarget.classList.toggle('on', mode === 'zeit');
   };
   // Hand every generation back to the automatic arrangement.
-  const arrange = $('#btn-arrange');
   if (canEdit()) {
     arrange.onclick = async () => {
       await resetArrangement();
       toast(t('tool.arranged'));
     };
-  } else arrange.hidden = true;
+  }
   $('#btn-legend').onclick = openLegend;
   $('#btn-branches').onclick = openBranches;
   $('#btn-settings').onclick = () => openSettings({ onLogout: logout });

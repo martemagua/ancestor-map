@@ -121,6 +121,14 @@ the moment the rule was relaxed:
 - **A row somebody dragged is pinned** — `order_key` on any person in it
   takes that generation out of the sweeps entirely. The automatic
   arrangement is a good guess, not an argument.
+- **The placement step decays** (`PASSES`/`DECAY`). With a constant step the
+  rows go on nudging each other outward for hundreds of passes, so the chart
+  is really a picture of where the loop was cut off — change the pass count
+  and every family sits differently. Decaying, 60 passes and 600 agree.
+- **The sibling bar spans the anchor as well as the children**
+  (`shelfSpan()` in map.js). An only child sitting a little to the side of
+  their parents otherwise gets two verticals with nothing joining them, and
+  the descent line simply stops in mid-air.
 - `ctx.yOf(person)` is the only difference between the two modes, so
   Generationen and Zeit share one horizontal arrangement and the tree keeps
   its shape when you switch.
@@ -147,6 +155,15 @@ on.
 - **A new persons *column* must go into the allow-list in `routes.js`** or
   writes silently drop it — but most new person facts are a registry entry,
   not a column.
+- **`persons.x/y` must never seed a position.** They are what the old force
+  simulation saved and they describe an arrangement that no longer exists;
+  started from, the whole tree opens in a heap and only sorts itself out
+  when something happens to relayout it. `rebuild()` seats anybody the map
+  has not seated itself (`p._seated`), which is not the same test as
+  "has no coordinates".
+- **Role-dependent chrome is hidden before `#app` is shown.** Revealing the
+  shell first and hiding the editing controls once the data has loaded
+  flashes an add button past every viewer on every load.
 - **Sheets stay in the DOM when closed** (translated off-screen). Test
   selectors must use `.sheet.show`.
 - **Static assets are `no-cache` with an ETag** — a `docker pull` reaches
