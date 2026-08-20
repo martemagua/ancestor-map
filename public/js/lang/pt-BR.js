@@ -269,4 +269,11 @@ export default {
   // Lugares
   'places.soon': 'O mapa de lugares está chegando — logo os locais de nascimento e falecimento estarão aqui em um mapa de verdade.',
   'places.empty': 'Ainda não há lugares com coordenadas.',
+  'places.how': 'Um lugar ganha coordenadas quando você toca em uma sugestão ao editar — ou em lote via Administração → Buscar.',
+  'places.all_years': 'Todos os anos',
+  'places.known': 'já na árvore',
+  'places.tiles_down': 'O servidor de mapas não responde. Outro pode ser configurado na administração.',
+  'card.stories': 'Histórias',
+  'err.geo_busy': 'Consultas de lugares demais de uma vez — espere um pouco.',
+  'err.geo_down': 'A busca de lugares está fora do ar agora.',
 };

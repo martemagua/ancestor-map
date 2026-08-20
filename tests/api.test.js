@@ -270,6 +270,30 @@ test('an API token reads and does nothing else', async () => {
   S.logoutLocally();
 });
 
+test('places knows every coordinate: births, deaths, stories', async () => {
+  await S.POST('/api/login', { username: 'duda', password: 'senha-segura' });
+  const p = await S.POST('/api/persons', {
+    name: 'Geo Person', birth: '1900', birth_place: 'Greifswald', birth_lat: 54.096, birth_lon: 13.387,
+    death: '1980', death_place: 'São Paulo', death_lat: -23.551, death_lon: -46.633,
+  });
+  await S.POST('/api/stories', {
+    title: 'Ortsgeschichte', date: '1950', place: 'Hamburg', lat: 53.551, lon: 9.994, people: [p.data.id],
+  });
+
+  const places = (await S.GET('/api/geo/places')).data;
+  assert.ok(places.births.some(b => b.id === p.data.id && b.year === 1900 && b.lat === 54.096));
+  assert.ok(places.deaths.some(d => d.id === p.data.id && d.year === 1980));
+  assert.ok(places.stories.some(s => s.title === 'Ortsgeschichte' && s.year === 1950));
+});
+
+test('geo search answers short queries locally and tiles validate coordinates', async () => {
+  // Two letters never reach Nominatim — the tests must run offline.
+  const short = await S.GET('/api/geo/search?q=ab');
+  assert.deepEqual(short.data.hits, []);
+  const bad = await S.GET('/api/geo/tile/99/0/0');
+  assert.equal(bad.status, 404);
+});
+
 test('login answers are rate-limited only on failures', async () => {
   for (let i = 0; i < 3; i++) {
     const ok = await S.POST('/api/login', { username: 'duda', password: 'senha-segura' });

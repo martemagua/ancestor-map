@@ -368,6 +368,11 @@ button{cursor:pointer; background:none; border:none}
   border-top-left-radius:6px;
 }
 .gm-host{height:min(62vh,520px)}
+/* The Orte tab's decade slider. */
+.yearctl{display:flex; gap:12px; align-items:center; padding:12px 2px}
+.yearctl input[type=range]{flex:1; accent-color:var(--accent)}
+.yearctl input[type=range]:disabled{opacity:.35}
+.yearctl b{font-family:var(--mono); font-size:13px; min-width:4ch; text-align:right}
 .gm-empty{
   position:absolute; inset:0; display:grid; place-items:center; text-align:center;
   padding:20px; color:var(--ink-3); font-size:14px;

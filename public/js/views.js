@@ -232,6 +232,12 @@ export function openStoryForm(s = null, presetPeople = []) {
 
   openSheet(s ? s.title : t('story.new'), body, {
     onMount(root) {
+      // Coordinates ride with the place text; a hand edit clears them.
+      let coords = { lat: s?.lat ?? null, lon: s?.lon ?? null };
+      import('./geo.js').then(geo => geo.attachPlacePicker(root.querySelector('[data-f="place"]'), {
+        onPick: hit => { coords = { lat: hit?.lat ?? null, lon: hit?.lon ?? null }; },
+      }));
+
       const drawPeople = () => {
         root.querySelector('[data-people]').innerHTML = [...chosen]
           .map(pid => S.personById[pid]).filter(Boolean)
@@ -256,7 +262,8 @@ export function openStoryForm(s = null, presetPeople = []) {
         const g = name => root.querySelector(`[data-f="${name}"]`).value;
         const payload = {
           title: g('title').trim(), kind: g('kind'), date: g('date').trim(),
-          place: g('place').trim(), text: g('text'), people: [...chosen],
+          place: g('place').trim(), lat: coords.lat, lon: coords.lon,
+          text: g('text'), people: [...chosen],
         };
         if (!payload.title) return toast(t('form.name_missing'));
         try {
@@ -274,10 +281,76 @@ export function openStoryForm(s = null, presetPeople = []) {
 
 // ------------------------------------------------------------------ places
 
-/** The Orte tab body — the slippy map lands in M5; until then, the promise. */
-export function renderPlaces() {
+let placesMap = null;
+let yearAll = true;
+let yearAt = null;
+const YEAR_WINDOW = 10;   // the slider shows ±10 years — a decade in view
+
+/**
+ * The Orte tab: every birth, death and story with coordinates on one slippy
+ * map, with a year slider to drag through the decades and watch the family
+ * move. "Alle Jahre" shows everything at once.
+ */
+export async function renderPlaces() {
   const host = $('#places-list');
-  const withCoords = S.persons.filter(p => p.birth_lat != null || p.death_lat != null).length;
-  host.innerHTML = `<div class="empty"><span class="big">🗺️</span>
-    <div>${escapeHtml(withCoords ? t('places.soon') : t('places.empty'))}</div></div>`;
+  placesMap?.destroy();
+  placesMap = null;
+
+  let data;
+  try { data = await api.get('/api/geo/places'); }
+  catch (err) { host.innerHTML = `<div class="empty"><span class="big">🗺️</span><div>${escapeHtml(err.message)}</div></div>`; return; }
+
+  const geo = await import('./geo.js');
+  const pins = [
+    ...data.births.map(geo.birthPin),
+    ...data.deaths.map(geo.deathPin),
+    ...data.stories.map(geo.storyPin),
+  ];
+
+  if (!pins.length) {
+    host.innerHTML = `<div class="empty"><span class="big">🗺️</span>
+      <div>${escapeHtml(t('places.empty'))}</div>
+      <div class="muted">${escapeHtml(t('places.how'))}</div></div>`;
+    return;
+  }
+
+  const years = pins.map(p => p.year).filter(y => y != null);
+  const minYear = years.length ? Math.min(...years) : 1900;
+  const maxYear = years.length ? Math.max(...years) : 2000;
+  if (yearAt == null) yearAt = maxYear;
+
+  host.innerHTML = `
+    <div class="yearctl">
+      <button class="chip sm ${yearAll ? 'on' : ''}" data-all>${escapeHtml(t('places.all_years'))}</button>
+      <input type="range" min="${minYear}" max="${maxYear}" value="${yearAt}" data-year ${yearAll ? 'disabled' : ''}>
+      <b data-yearlabel>${yearAll ? '' : yearAt}</b>
+    </div>
+    <div class="gm-host" data-map></div>`;
+
+  const visible = () => (yearAll
+    ? pins
+    : pins.filter(p => p.year != null && Math.abs(p.year - yearAt) <= YEAR_WINDOW));
+
+  placesMap = geo.createMap(host.querySelector('[data-map]'), {
+    pins: visible(),
+    onPin: pin => {
+      if (pin.kind === 'person') openPerson(pin.id);
+      else openStory(pin.id);
+    },
+  });
+
+  const slider = host.querySelector('[data-year]');
+  const label = host.querySelector('[data-yearlabel]');
+  slider.oninput = () => {
+    yearAt = Number(slider.value);
+    label.textContent = yearAt;
+    placesMap.setPins(visible());
+  };
+  host.querySelector('[data-all]').onclick = e => {
+    yearAll = !yearAll;
+    e.currentTarget.classList.toggle('on', yearAll);
+    slider.disabled = yearAll;
+    label.textContent = yearAll ? '' : yearAt;
+    placesMap.setPins(visible());
+  };
 }

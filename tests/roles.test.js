@@ -35,6 +35,10 @@ test('a viewer reads everything and writes nothing', async () => {
   // Their own account is still theirs: language, tokens, password.
   assert.equal((await S.POST('/api/me', { lang: 'pt-BR' })).status, 200);
   assert.equal((await S.POST('/api/tokens', { name: 'meins' })).status, 200);
+
+  // Places are readable; the Nominatim-burning backfill is not theirs to run.
+  assert.equal((await S.GET('/api/geo/places')).status, 200);
+  assert.equal((await S.POST('/api/geo/backfill', { max: 1 })).status, 403);
 });
 
 test('an editor writes the family but does not run the installation', async () => {

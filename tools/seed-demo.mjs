@@ -30,8 +30,8 @@ const weber = createBranch({ name: 'Familie Weber', color: '#E0A13B', emoji: '�
 const souza = createBranch({ name: 'Família Souza', color: '#3E7CB1', emoji: '🌊' }).id;
 
 // ---------------------------------------------------------------- Brandt line (Germany)
-person('friedrich', { name: 'Friedrich Brandt', sex: 'm', birth: '~1858', death: '1931', birth_place: 'Greifswald', occupation: 'Schmied', branches: [brandt] });
-person('wilhelmine', { name: 'Wilhelmine Brandt', sex: 'f', birth: '1863-04-11', death: '<1941', birth_place: 'Anklam', branches: [brandt] });
+person('friedrich', { name: 'Friedrich Brandt', sex: 'm', birth: '~1858', death: '1931', birth_place: 'Greifswald', death_place: 'Greifswald', occupation: 'Schmied', branches: [brandt] });
+person('wilhelmine', { name: 'Wilhelmine Brandt', sex: 'f', birth: '1863-04-11', death: '<1941', birth_place: 'Anklam', death_place: 'Greifswald', branches: [brandt] });
 const u1 = union('friedrich', 'wilhelmine', 'ehe', '1883');
 
 person('otto', { name: 'Otto Brandt', sex: 'm', birth: '1885-06-02', death: '1957', birth_place: 'Greifswald', occupation: 'Schlosser', branches: [brandt] });
@@ -83,10 +83,10 @@ person('tanja', { name: 'Tanja Brandt', sex: 'f', birth: '1978', branches: [bran
 kids(u8, ['tanja']);
 
 // ---------------------------------------------------------------- Souza line (Brazil)
-person('jose', { name: 'José Souza', sex: 'm', birth: '~1910', death: '1980', birth_place: 'Salvador', occupation: 'Pescador', branches: [souza] });
+person('jose', { name: 'José Souza', sex: 'm', birth: '~1910', death: '1980', birth_place: 'Salvador', death_place: 'Salvador', occupation: 'Pescador', branches: [souza] });
 person('luzia', { name: 'Luzia Souza', sex: 'f', birth: '1915', death: '1990', birth_name: 'Almeida', branches: [souza] });
 const u9 = union('jose', 'luzia', 'ehe', '1935');
-person('joao', { name: 'João Souza', sex: 'm', birth: '1938-01-20', death: '2015', birth_place: 'Salvador', occupation: 'Marceneiro', branches: [souza] });
+person('joao', { name: 'João Souza', sex: 'm', birth: '1938-01-20', death: '2015', birth_place: 'Salvador', death_place: 'São Paulo', occupation: 'Marceneiro', branches: [souza] });
 person('antonio', { name: 'Antônio Souza', sex: 'm', birth: '1940', branches: [souza] });
 kids(u9, ['joao', 'antonio']);
 
@@ -137,6 +137,20 @@ createStory({ title: 'Hochzeit in São Paulo', kind: 'hochzeit', date: '1993-05-
 createStory({ title: 'Umzug nach Hamburg', kind: 'umzug', date: '1994', place: 'Hamburg', text: 'Nach einem Jahr Fernbeziehung zog Ana zu Thomas nach Hamburg.', people: [P.ana, P.thomas] });
 createStory({ title: 'Austauschjahr in Portland', kind: 'erlebnis', date: '2012..2013', place: 'Portland', text: 'Julias Jahr bei Familie Carter — der Anfang einer zweiten Familie.', people: [P.julia, P.emily] });
 createStory({ title: 'Das Lied vom Meer', kind: 'anekdote', date: '~1975', place: 'Salvador', text: 'José sang beim Flicken der Netze immer dasselbe Lied. João konnte es bis zuletzt auswendig.', people: [P.jose, P.joao] });
+
+// ---------------------------------------------------------------- coordinates
+// Fixed, so the seed never calls Nominatim — the Orte map has pins out of the
+// box, and the demo works offline.
+const PLACES = {
+  Greifswald: [54.096, 13.387], Anklam: [53.855, 13.693], Stralsund: [54.309, 13.081],
+  Hamburg: [53.551, 9.994], Salvador: [-12.972, -38.501], 'São Paulo': [-23.551, -46.633],
+  Portland: [45.515, -122.678],
+};
+for (const [place, [lat, lon]] of Object.entries(PLACES)) {
+  db.prepare('UPDATE persons SET birth_lat=?, birth_lon=? WHERE birth_place=?').run(lat, lon, place);
+  db.prepare('UPDATE persons SET death_lat=?, death_lon=? WHERE death_place=?').run(lat, lon, place);
+  db.prepare('UPDATE stories SET lat=?, lon=? WHERE place=?').run(lat, lon, place);
+}
 
 const count = db.prepare('SELECT COUNT(*) c FROM persons').get().c;
 console.log(`Seeded ${count} fictional people, ${db.prepare('SELECT COUNT(*) c FROM unions').get().c} unions, `

@@ -14,6 +14,7 @@ import {
 } from './auth.js';
 import { startBackupSchedule, runBackup, listBackups } from './backup.js';
 import { getGraph, kinship, stats } from './queries.js';
+import * as geo from './geo.js';
 import * as R from './routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -244,6 +245,22 @@ on('POST', /^\/api\/sources\/(\d+)\/link$/, 'editor', ctx =>
   R.linkSource(ctx.params[0], ctx.body.type, ctx.body.id));
 on('DELETE', /^\/api\/sources\/(\d+)\/link$/, 'editor', ctx =>
   R.unlinkSource(ctx.params[0], ctx.url.searchParams.get('type'), ctx.url.searchParams.get('id')));
+
+// ---- places ------------------------------------------------------------------
+on('GET', '/api/geo/search', 'viewer', async ctx =>
+  ({ hits: await geo.search(ctx.url.searchParams.get('q') || '') }));
+on('GET', '/api/geo/places', 'viewer', () => geo.places());
+// The fallback for browsers that refuse to send a Referer — see geo.js.
+on('GET', /^\/api\/geo\/tile\/(\d+)\/(\d+)\/(\d+)$/, 'viewer', async ctx => {
+  const image = await geo.tile(ctx.params[0], ctx.params[1], ctx.params[2]);
+  return raw(image.body, { 'Cache-Control': 'private, max-age=604800' }, image.mime);
+});
+on('POST', '/api/geo/backfill', 'editor', async ctx => {
+  // Capped: at one lookup a second, an unbounded batch would hold the
+  // connection open for as long as the family is big.
+  const max = Math.min(50, Math.max(1, Number(ctx.body.max) || 20));
+  return geo.backfill(max);
+});
 
 // ---- API tokens (your own account's, whatever your role) --------------------
 on('GET', '/api/tokens', 'viewer', ctx => listApiTokens(ctx.user.id));

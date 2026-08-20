@@ -93,6 +93,10 @@ try {
         await page.waitForTimeout(300);
         await page.screenshot({ path: path.join(OUT, 'stories-phone-light.png') });
         shots.push('stories-phone-light.png');
+        await page.click('#tabbar [data-tab="places"]');
+        await page.waitForTimeout(2500);            // tiles need a moment
+        await page.screenshot({ path: path.join(OUT, 'places-phone-light.png') });
+        shots.push('places-phone-light.png');
       }
       if (errors.length) console.error(`[${device}/${scheme}] page errors:\n` + errors.join('\n'));
       await page.close();

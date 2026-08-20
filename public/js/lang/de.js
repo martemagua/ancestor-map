@@ -269,4 +269,11 @@ export default {
   // Places
   'places.soon': 'Die Ortskarte entsteht gerade — bald liegen Geburts- und Sterbeorte hier auf einer echten Karte.',
   'places.empty': 'Noch keine Orte mit Koordinaten.',
+  'places.how': 'Orte bekommen Koordinaten, wenn beim Bearbeiten ein Vorschlag angetippt wird — oder gesammelt über Verwaltung → Nachschlagen.',
+  'places.all_years': 'Alle Jahre',
+  'places.known': 'schon im Baum',
+  'places.tiles_down': 'Der Kachelserver liefert nichts. In der Verwaltung lässt sich ein anderer eintragen.',
+  'card.stories': 'Geschichten',
+  'err.geo_busy': 'Zu viele Ortsanfragen auf einmal — kurz warten.',
+  'err.geo_down': 'Die Ortssuche ist gerade nicht erreichbar.',
 };

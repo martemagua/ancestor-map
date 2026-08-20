@@ -269,4 +269,11 @@ export default {
   // Places
   'places.soon': 'The places map is on its way — birth and death places will land here on a real map.',
   'places.empty': 'No places with coordinates yet.',
+  'places.how': 'A place gets coordinates when you tap a suggestion while editing — or in bulk via Administration → Look up.',
+  'places.all_years': 'All years',
+  'places.known': 'already in the tree',
+  'places.tiles_down': 'The tile server is not answering. Another one can be set in administration.',
+  'card.stories': 'Stories',
+  'err.geo_busy': 'Too many place lookups at once — wait a moment.',
+  'err.geo_down': 'The place search is unreachable right now.',
 };

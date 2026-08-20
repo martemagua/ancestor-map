@@ -218,6 +218,12 @@ function readFields(root) {
   return out;
 }
 
+/** This person's stories, oldest first — their timeline on the card. */
+const storiesOf = personId => (S.stories || [])
+  .filter(s => s.people.includes(personId))
+  .map(s => ({ ...s, year: s.date_year }))
+  .sort((a, b) => (a.year ?? 9999) - (b.year ?? 9999));
+
 /**
  * What the other accounts wrote, where it differs from what you see — the
  * footnote on a card, marked with one small figure; the name is on the icon.
@@ -330,6 +336,17 @@ export function openPerson(id) {
       ${canEdit() ? `<button class="btn sm" data-connect style="margin-top:10px">+ ${escapeHtml(t('card.connect'))}</button>` : ''}
     </div>` : ''}
 
+    ${storiesOf(id).length || canEdit() ? `
+    <div class="card">
+      <h3>${escapeHtml(t('card.stories'))}</h3>
+      ${storiesOf(id).map(s => `<button class="relrow" data-openstory="${s.id}"><span class="relmain">
+        <span class="kind">${escapeHtml(s.year != null ? String(s.year) : '·')}</span>
+        <span class="nm">${escapeHtml(s.title)}
+        <span class="via">${escapeHtml([formatFuzzy(s.date), s.place].filter(Boolean).join(' · '))}</span></span>
+      </span></button>`).join('')}
+      ${canEdit() ? `<button class="btn sm" data-newstory style="margin-top:10px">+ ${escapeHtml(t('story.new'))}</button>` : ''}
+    </div>` : ''}
+
     ${branches.length ? `<div class="card"><h3>${escapeHtml(t('card.branches'))}</h3>
       <div class="taglist">${branches.map(b => `<span class="tag"><span class="dot" style="background:${
         escapeHtml(b.color)}"></span>${escapeHtml(b.name)}</span>`).join('')}</div></div>` : ''}
@@ -355,6 +372,12 @@ export function openPerson(id) {
         btn.onclick = e => { e.stopPropagation(); openUnionForm(Number(btn.dataset.union)); };
       });
       root.querySelector('[data-treefrom]').onclick = () => { closeSheet(); onTreeFrom(id); };
+      // views.js imports ui.js, so the story sheets are reached dynamically.
+      root.querySelectorAll('[data-openstory]').forEach(btn => {
+        btn.onclick = () => import('./views.js').then(m => m.openStory(Number(btn.dataset.openstory)));
+      });
+      root.querySelector('[data-newstory]')?.addEventListener('click', () =>
+        import('./views.js').then(m => m.openStoryForm(null, [id])));
       const pin = root.querySelector('[data-pin]');
       if (pin) {
         pin.onclick = async () => {
@@ -433,14 +456,31 @@ export function openPersonForm(id) {
 
   openSheet(p ? t('form.edit_person', { name: p.name }) : t('form.new_person'), body, {
     onMount(root) {
+      // Coordinates ride along with the place text. Editing the text by hand
+      // drops them — they would otherwise still point at the old place; only
+      // picking a suggestion (or the admin backfill) sets them.
+      const coords = {
+        birth: { lat: p?.birth_lat ?? null, lon: p?.birth_lon ?? null },
+        death: { lat: p?.death_lat ?? null, lon: p?.death_lon ?? null },
+      };
+      import('./geo.js').then(geo => {
+        for (const which of ['birth', 'death']) {
+          geo.attachPlacePicker(root.querySelector(`[data-f="${which}_place"]`), {
+            onPick: hit => { coords[which] = { lat: hit?.lat ?? null, lon: hit?.lon ?? null }; },
+          });
+        }
+      });
+
       root.querySelector('[data-save]').onclick = async () => {
         const payload = {
           name: val(root, 'name').trim(),
           sex: val(root, 'sex'),
           birth: val(root, 'birth').trim(),
           birth_place: val(root, 'birth_place').trim(),
+          birth_lat: coords.birth.lat, birth_lon: coords.birth.lon,
           death: val(root, 'death').trim(),
           death_place: val(root, 'death_place').trim(),
+          death_lat: coords.death.lat, death_lon: coords.death.lon,
           ...(root.querySelector('[data-branches]') ? { branches: checked(root, '[data-branches] input') } : {}),
           ...readFields(root),
         };
