@@ -310,6 +310,11 @@ export default {
   'adm.merge_confirm': 'Fold "{drop}" into "{keep}"? This cannot be undone.',
   'adm.geo_go': 'Look up places',
   'adm.geo_done': '{n} looked up, {left} still open.',
+  'adm.demo': 'Demo family',
+  'adm.demo_what': 'Fills an empty tree with a fictional four-generation family — two lineages joined by a marriage, with stories and places. For trying things out on a test instance. It is refused as soon as there are real people in the tree.',
+  'adm.demo_go': 'Insert the demo family',
+  'adm.demo_done': 'Inserted {n} fictional people.',
+  'err.demo_not_empty': 'This tree already has people in it — the demo family only goes into an empty one.',
   'adm.settings': 'Settings',
   'adm.tile': 'Tile URL (empty = OpenStreetMap)',
 

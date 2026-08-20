@@ -301,6 +301,12 @@ on('GET', '/api/export/gedcom', 'admin', async ctx => {
 on('POST', '/api/import', 'admin', ctx => R.importAll(ctx.body.data || ctx.body, { replace: ctx.body.replace === true }));
 on('GET', '/api/backups', 'admin', () => listBackups());
 on('POST', '/api/backups', 'admin', () => runBackup('manual'));
+// Fill a fresh test instance with the fictional family. Refuses the moment
+// there is anyone real in the tree, so it can never touch a family's own.
+on('POST', '/api/demo-family', 'admin', async () => {
+  const { seedDemoFamily } = await import('./demo-family.js');
+  return seedDemoFamily();
+});
 on('GET', '/api/duplicates', 'admin', () => R.findDuplicates());
 on('POST', '/api/persons/merge', 'admin', ctx => R.mergePersons(ctx.body));
 

@@ -310,6 +310,11 @@ export default {
   'adm.merge_confirm': '„{drop}“ in „{keep}“ aufgehen lassen? Das ist nicht umkehrbar.',
   'adm.geo_go': 'Orte nachschlagen',
   'adm.geo_done': '{n} nachgeschlagen, {left} noch offen.',
+  'adm.demo': 'Demo-Familie',
+  'adm.demo_what': 'Füllt einen leeren Baum mit einer erfundenen Familie über vier Generationen — zwei Linien, die eine Heirat verbindet, mit Geschichten und Orten. Zum Ausprobieren auf einer Testinstanz. Sobald echte Menschen im Baum stehen, wird das abgelehnt.',
+  'adm.demo_go': 'Demo-Familie einfügen',
+  'adm.demo_done': '{n} erfundene Menschen eingefügt.',
+  'err.demo_not_empty': 'In diesem Baum stehen schon Menschen — die Demo-Familie kommt nur in einen leeren.',
   'adm.settings': 'Einstellungen',
   'adm.tile': 'Kachel-URL (leer = OpenStreetMap)',
 

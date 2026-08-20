@@ -310,6 +310,11 @@ export default {
   'adm.merge_confirm': 'Fundir "{drop}" em "{keep}"? Isso não pode ser desfeito.',
   'adm.geo_go': 'Buscar coordenadas',
   'adm.geo_done': '{n} encontrados, {left} ainda pendentes.',
+  'adm.demo': 'Família de demonstração',
+  'adm.demo_what': 'Preenche uma árvore vazia com uma família fictícia de quatro gerações — duas linhagens unidas por um casamento, com histórias e lugares. Para experimentar em uma instância de teste. Assim que houver pessoas reais na árvore, isso é recusado.',
+  'adm.demo_go': 'Inserir família de demonstração',
+  'adm.demo_done': '{n} pessoas fictícias inseridas.',
+  'err.demo_not_empty': 'Esta árvore já tem pessoas — a família de demonstração só entra em uma vazia.',
   'adm.settings': 'Configurações',
   'adm.tile': 'URL dos tiles (vazio = OpenStreetMap)',
 

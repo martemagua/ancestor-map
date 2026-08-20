@@ -12,6 +12,9 @@ WORKDIR /app
 COPY package.json ./
 COPY server ./server
 COPY public ./public
+# So `node tools/seed-demo.mjs` works in a running container, next to the
+# button that does the same thing in /admin.
+COPY tools/seed-demo.mjs ./tools/seed-demo.mjs
 
 # Stamped by the workflow so the running app can say which build it is. Without
 # it — a local `docker build` — the app just says "dev", which is the truth.

@@ -18,10 +18,11 @@ export const S = {
   partnersOfUnion: {}, childrenOfUnion: {}, unionsOfPerson: {}, parentUnionsOf: {},
   kinIdx: null,
   user: null, mePersonId: null,
-  // Whose tree we are reading. Defaults to you (or the first person); the
-  // "view from here" button on any card moves it. Kinship labels, the
-  // layout's generations and the card's relation line all follow it.
-  probandId: null,
+  // Whose tree we are reading. Kinship labels, the layout's generations and
+  // the card's relation line all follow it. Until "view from here" is used
+  // it stays a *suggestion* (see defaultProband) that follows the data;
+  // pinned, it is the reader's choice and nothing overrides it.
+  probandId: null, probandPinned: false,
   // 'gen' (generations) | 'zeit' (birth years) — the tree's Y axis.
   layoutMode: 'gen',
   // A branch is normally just shown. Highlighting some dims everyone else
@@ -187,11 +188,33 @@ export function reindex() {
     persons: S.persons, unions: S.unions,
     union_partners: S.union_partners, children: S.children,
   });
-  // The proband must exist; a deleted one falls back to you, then to anyone.
-  if (!S.personById[S.probandId]) {
-    S.probandId = S.personById[S.mePersonId] ? S.mePersonId : (S.persons[0]?.id ?? null);
-  }
+  // Until somebody deliberately picks a centre, keep choosing a sensible
+  // one — and re-check it, because "sensible" changes as the tree grows.
+  if (!S.probandPinned || !S.personById[S.probandId]) S.probandId = defaultProband();
   memo.clear();
+}
+
+/** How much tree hangs off one person — partners, parents and children. */
+const familyWeight = id => (S.unionsOfPerson[id] || []).length
+  + (S.parentUnionsOf[id] || []).length
+  + (S.unionsOfPerson[id] || []).reduce((n, u) => n + (S.childrenOfUnion[u] || []).length, 0);
+
+/**
+ * Who the tree centres on when nobody has said. Your own person, as soon as
+ * they are actually in the tree — otherwise whoever the tree reads best
+ * from. That second case is a fresh install: your account's person hangs
+ * off nothing yet, and centring on them would flatten every generation into
+ * one row, because nobody is reachable from an island.
+ */
+function defaultProband() {
+  const me = S.personById[S.mePersonId] ? S.mePersonId : null;
+  if (me && familyWeight(me)) return me;
+  let best = null, bestWeight = 0;
+  for (const p of S.persons) {
+    const weight = familyWeight(p.id);
+    if (weight > bestWeight) { bestWeight = weight; best = p.id; }
+  }
+  return best ?? me ?? S.persons[0]?.id ?? null;
 }
 
 /**

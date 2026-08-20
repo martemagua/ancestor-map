@@ -211,6 +211,7 @@ async function refreshAll() {
  */
 function setProband(id) {
   S.probandId = id;
+  S.probandPinned = true;          // a deliberate choice outranks the default
   S.persons.forEach(p => { p._gen = undefined; });   // the layout re-derives
   renderProband();
   renderPeople();

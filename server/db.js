@@ -227,9 +227,22 @@ export const needsSetup = () => db.prepare('SELECT COUNT(*) c FROM users').get()
 // UNIQUE(a_id,b_id) constraint actually prevents duplicate pairs.
 export const pair = (x, y) => (Number(x) < Number(y) ? [Number(x), Number(y)] : [Number(y), Number(x)]);
 
-/** One transaction, rolled back on any throw. All multi-write routes use it. */
+/**
+ * One transaction, rolled back on any throw. All multi-write routes use it.
+ *
+ * Re-entrant: SQLite has no nested BEGIN, but the write handlers are meant
+ * to compose — seeding the demo family calls createPerson forty times, and
+ * each of those wants a transaction of its own. Only the outermost call
+ * actually begins and commits, so the whole batch still lands or doesn't.
+ */
+let txDepth = 0;
 export function tx(fn) {
+  if (txDepth > 0) {
+    txDepth++;
+    try { return fn(); } finally { txDepth--; }
+  }
   db.exec('BEGIN');
+  txDepth = 1;
   try {
     const out = fn();
     db.exec('COMMIT');
@@ -237,6 +250,8 @@ export function tx(fn) {
   } catch (err) {
     db.exec('ROLLBACK');
     throw err;
+  } finally {
+    txDepth = 0;
   }
 }
 
