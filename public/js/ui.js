@@ -7,7 +7,7 @@ import {
   branchesWithParents, ancestorsOf, treeOrder, suggestBranchColor, lighten,
   parentsOfP, siblingsOfP, unionsOfP, unionPartners, unionChildren,
   kinLabel, relsOf, otherEnd, otherViewsOf, lifespan, buildLabel, branchPalette,
-  UNION_ENDINGS, LIVING, relLabelFor, storyKind,
+  UNION_ENDINGS, LIVING, relLabelFor, storyKind, suggestionsFor,
 } from './store.js';
 import {
   FIELDS, SECTIONS, fieldsIn, fromStored, toStored, isEmpty, fieldApplies, isDeceased,
@@ -303,8 +303,16 @@ function fieldHtml(field, raw) {
         return `<select data-f="${field.key}">${field.choices.map(c =>
           `<option value="${escapeHtml(c)}"${String(shown) === c ? ' selected' : ''}>${
             escapeHtml(t(field.choiceKey + c))}</option>`).join('')}</select>`;
-      default:
-        return `<input data-f="${field.key}" value="${escapeHtml(shown)}"${ph}>`;
+      default: {
+        // Offer what the tree already says, so the second Schlosser is
+        // spelled like the first. Still a plain text box underneath.
+        if (!field.suggest) return `<input data-f="${field.key}" value="${escapeHtml(shown)}"${ph}>`;
+        const options = suggestionsFor(field.key);
+        return `<input data-f="${field.key}" value="${escapeHtml(shown)}"${ph}
+          ${options.length ? `list="dl-${field.key}"` : ''} autocomplete="off">
+          ${options.length ? `<datalist id="dl-${field.key}">${
+          options.map(o => `<option value="${escapeHtml(o)}"></option>`).join('')}</datalist>` : ''}`;
+      }
     }
   };
   return `<label class="field">${label}${input()}</label>`;

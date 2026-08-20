@@ -135,6 +135,30 @@ export function relLabelFor(r, personId) {
   return t(`rel.${k.id}${Number(r.from_id) === Number(personId) ? '' : '_rev'}`);
 }
 
+/**
+ * What people in this tree already answered for a field, commonest first.
+ *
+ * Genealogy notes drift — "Schlosser", "schlosser", "Schlossermeister" — and
+ * three spellings of one trade cannot be grouped or counted later. Offering
+ * what is already in the tree makes the second entry agree with the first
+ * without anybody deciding on a controlled vocabulary up front, and it stays
+ * a suggestion: the box is a plain text field and anything can be typed.
+ */
+export function suggestionsFor(key, limit = 40) {
+  const seen = new Map();
+  for (const p of S.persons) {
+    const raw = String(p[key] ?? '').trim();
+    if (!raw) continue;
+    const at = seen.get(raw.toLowerCase());
+    if (at) at.n += 1;
+    else seen.set(raw.toLowerCase(), { value: raw, n: 1 });
+  }
+  return [...seen.values()]
+    .sort((a, b) => b.n - a.n || a.value.localeCompare(b.value, getLang()))
+    .slice(0, limit)
+    .map(x => x.value);
+}
+
 export const storyKind = id => STORY_KINDS.find(k => k.id === id) || STORY_KINDS[STORY_KINDS.length - 1];
 
 // ------------------------------------------------------------------ loading

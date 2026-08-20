@@ -60,19 +60,19 @@ export const FIELDS = [
   },
 
   {
-    key: 'occupation', scope: 'gemeinsam', type: 'text', section: 'leben',
+    key: 'occupation', scope: 'gemeinsam', type: 'text', section: 'leben', suggest: true,
     label: 'f.occupation', placeholder: 'f.occupation_ph', icon: '🛠', half: true,
   },
   {
-    key: 'education', scope: 'gemeinsam', type: 'text', section: 'leben',
+    key: 'education', scope: 'gemeinsam', type: 'text', section: 'leben', suggest: true,
     label: 'f.education', icon: '🎓', half: true,
   },
   {
-    key: 'religion', scope: 'gemeinsam', type: 'text', section: 'leben',
+    key: 'religion', scope: 'gemeinsam', type: 'text', section: 'leben', suggest: true,
     label: 'f.religion', icon: '⛪', half: true,
   },
   {
-    key: 'nationality', scope: 'gemeinsam', type: 'text', section: 'leben',
+    key: 'nationality', scope: 'gemeinsam', type: 'text', section: 'leben', suggest: true,
     label: 'f.nationality', icon: '🌍', half: true,
   },
   {
