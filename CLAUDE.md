@@ -45,7 +45,7 @@ docker compose up -d --build # production-like, local
 
 `tests/api.test.js` drives the HTTP API exactly as the frontend does — add to
 it whenever you touch `server/`. DOM-free modules (`fuzzydate.js`,
-`kinship.js`, `fields.js`, `i18n.js`, the layout rules in `map.js`) are
+`kinship.js`, `fields.js`, `i18n.js`, `layout.js`, the rules in `map.js`) are
 unit-tested under plain node; keep them free of DOM/browser globals or their
 tests stop working. Map work is judged on the seeded family, never on five
 nodes.
@@ -80,6 +80,62 @@ nodes.
 - Kinship ("your great-aunt", "cousin twice removed") is computed by
   `public/js/kinship.js` from the union graph relative to the current
   proband — never stored. Same for generations.
+- **Where everybody stands is computed, not stored.** `public/js/layout.js`
+  assigns every X from the graph on each relayout; `persons.x/y` are legacy
+  columns kept only so an old backup still restores. The one thing a person
+  carries is `persons.order_key` — their place along their own row, written
+  only when somebody drags them (`POST /api/layout-order`) and cleared for
+  everyone by the ↔️ button.
+
+## The chart
+
+`public/js/layout.js` is the whole arrangement, and it is DOM-free so
+`tests/layout.test.js` can check the rules under plain node. Four steps:
+cells → order → place → anchors. It replaced a force simulation, and the
+reasons are worth keeping in mind, because each one is a bug that came back
+the moment the rule was relaxed:
+
+- **A couple is one indivisible cell.** Physics has no notion of "stay beside
+  your spouse", so strangers drifted between two partners and the partner bar
+  drew straight through them.
+- **The ordering unit is the family, not the person.** A plain barycentre
+  sweep lets a neighbour with a better average slide into the middle of
+  somebody's children; ordering whole sibling groups makes a family
+  contiguous by construction. `c.family` is the parent union a cell stands
+  in — a married couple descends from two and can only be in one, so the
+  person seated first takes theirs, and the other family's line runs long.
+  That same choice weights the pull, or the couple floats halfway between
+  two families and neither sibling bar closes up.
+- **Pulls are expressed in seats, not cell centres**, or a child who is also
+  half of a couple lands beside their parents' descent line instead of under
+  it. The child-under-parents pull outweighs the parents-over-children one:
+  a kink in a descent line is visible, an anchor sitting off the middle of
+  its brood is not.
+- **`separate()` expands a row around its own middle.** Opening gaps left to
+  right moves everything on the right and nothing on the left, the parents
+  above follow that creep, pull the children further the same way, and the
+  whole tree walks off the screen and never settles.
+- **Sibling bars are laid into lanes** (`laneShelves()`). Two families' bars
+  at the same height and side by side are one long line as far as an eye is
+  concerned, and then nothing says whose children are whose.
+- **A row somebody dragged is pinned** — `order_key` on any person in it
+  takes that generation out of the sweeps entirely. The automatic
+  arrangement is a good guess, not an argument.
+- **The placement step decays** (`PASSES`/`DECAY`). With a constant step the
+  rows go on nudging each other outward for hundreds of passes, so the chart
+  is really a picture of where the loop was cut off — change the pass count
+  and every family sits differently. Decaying, 60 passes and 600 agree.
+- **The sibling bar spans the anchor as well as the children**
+  (`shelfSpan()` in map.js). An only child sitting a little to the side of
+  their parents otherwise gets two verticals with nothing joining them, and
+  the descent line simply stops in mid-air.
+- `ctx.yOf(person)` is the only difference between the two modes, so
+  Generationen and Zeit share one horizontal arrangement and the tree keeps
+  its shape when you switch.
+
+`node tests/busy.mjs <dir>` seeds the family and photographs the result at
+both widths, in both themes, in both modes — that is what map work is judged
+on.
 
 ## Things that will bite you
 
@@ -99,6 +155,15 @@ nodes.
 - **A new persons *column* must go into the allow-list in `routes.js`** or
   writes silently drop it — but most new person facts are a registry entry,
   not a column.
+- **`persons.x/y` must never seed a position.** They are what the old force
+  simulation saved and they describe an arrangement that no longer exists;
+  started from, the whole tree opens in a heap and only sorts itself out
+  when something happens to relayout it. `rebuild()` seats anybody the map
+  has not seated itself (`p._seated`), which is not the same test as
+  "has no coordinates".
+- **Role-dependent chrome is hidden before `#app` is shown.** Revealing the
+  shell first and hiding the editing controls once the data has loaded
+  flashes an add button past every viewer on every load.
 - **Sheets stay in the DOM when closed** (translated off-screen). Test
   selectors must use `.sheet.show`.
 - **Static assets are `no-cache` with an ETag** — a `docker pull` reaches

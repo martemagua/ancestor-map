@@ -3,6 +3,9 @@
 data
 node_modules
 tests
-tools
+# The demo seeder ships: filling a fresh test instance should not require
+# a checkout. The family itself lives in server/demo-family.js.
+tools/*
+!tools/seed-demo.mjs
 screenshots
 *.md

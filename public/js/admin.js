@@ -110,6 +110,12 @@ function render() {
     </section>
 
     <section>
+      <h2>${esc(t('adm.demo'))}</h2>
+      <p class="muted">${esc(t('adm.demo_what'))}</p>
+      <button class="btn" data-demo style="margin-top:10px">${esc(t('adm.demo_go'))}</button>
+    </section>
+
+    <section>
       <h2>${esc(t('adm.dups'))}</h2>
       ${state.duplicates.length ? state.duplicates.map((group, gi) => `<div class="dupgroup" data-group="${gi}">
         ${group.map(p => `<div class="rowline">
@@ -192,6 +198,13 @@ function wire() {
     try {
       const out = await api.post('/api/geo/backfill', { max: 20 });
       toast(t('adm.geo_done', { n: out.done.length, left: out.left }));
+    } catch (err) { toast(err.message); }
+  };
+  $('[data-demo]').onclick = async () => {
+    try {
+      const out = await api.post('/api/demo-family');
+      toast(t('adm.demo_done', { n: out.persons }));
+      await reload();
     } catch (err) { toast(err.message); }
   };
   $('[data-import]').onclick = async () => {

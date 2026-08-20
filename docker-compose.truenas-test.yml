@@ -8,6 +8,11 @@
 services:
   ancestormap-test:
     image: ghcr.io/martemagua/ancestor-map:dev
+    # `dev` is a moving tag: the same name points at a new image after every
+    # push. Without this, Docker keeps serving the copy it already has and
+    # TrueNAS has nothing to light its Update button up for — so stopping
+    # and starting the app is the update.
+    pull_policy: always
     container_name: ancestormap-test
     user: "568:568"
     ports:

@@ -218,6 +218,26 @@ test('positions save, empty coordinates are ignored', async () => {
   assert.equal(graph.persons.find(p => p.id === id.otto).x, null);
 });
 
+test('a hand-arranged row is remembered, and can be handed back', async () => {
+  const out = await S.POST('/api/layout-order', [{ id: id.karl, key: 3 }, { id: id.otto, key: 0 }]);
+  assert.equal(out.status, 200);
+  assert.equal(out.data.saved, 2);
+  let graph = (await S.GET('/api/graph')).data;
+  assert.equal(graph.persons.find(p => p.id === id.karl).order_key, 3);
+  assert.equal(graph.persons.find(p => p.id === id.otto).order_key, 0);
+
+  // The button that gives the whole chart back to the tidy pass.
+  assert.equal((await S.DEL('/api/layout-order')).status, 200);
+  graph = (await S.GET('/api/graph')).data;
+  assert.ok(graph.persons.every(p => p.order_key === null), 'every row is automatic again');
+
+  // Anything that is not a number means "no place of your own".
+  await S.POST('/api/layout-order', [{ id: id.karl, key: 'nowhere' }]);
+  graph = (await S.GET('/api/graph')).data;
+  assert.equal(graph.persons.find(p => p.id === id.karl).order_key, null);
+  assert.equal((await S.POST('/api/layout-order', { nope: true })).status, 400);
+});
+
 test('upcoming sees exact birthdays of the living only', async () => {
   const soon = new Date(Date.now() + 3 * 864e5);
   const iso = `1980-${String(soon.getMonth() + 1).padStart(2, '0')}-${String(soon.getDate()).padStart(2, '0')}`;

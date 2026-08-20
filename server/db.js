@@ -10,7 +10,23 @@ import { DatabaseSync } from 'node:sqlite';
 
 export const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 export const BACKUP_DIR = path.join(DATA_DIR, 'backups');
-fs.mkdirSync(BACKUP_DIR, { recursive: true });
+
+// The single most common self-hosting failure is a data directory the
+// container user cannot write — say so in one plain sentence instead of a
+// stack trace, because this is the first line anyone sees in the app logs.
+try {
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  fs.accessSync(DATA_DIR, fs.constants.W_OK);
+} catch {
+  const who = `uid ${process.getuid?.() ?? '?'} / gid ${process.getgid?.() ?? '?'}`;
+  console.error(
+    `The data directory ${DATA_DIR} is not writable by the container user (${who}).\n`
+    + `Fix the ownership of the host folder mounted there, e.g. on TrueNAS:\n`
+    + `  sudo chown -R ${process.getuid?.() ?? 568}:${process.getgid?.() ?? 568} /path/to/your/dataset\n`
+    + `then restart the app.`,
+  );
+  process.exit(1);
+}
 
 export const db = new DatabaseSync(path.join(DATA_DIR, 'ancestormap.db'));
 db.exec('PRAGMA journal_mode = WAL;');
@@ -199,6 +215,11 @@ export function ensureColumn(table, col, decl) {
   if (!cols.some(c => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${decl}`);
 }
 
+// Where somebody has dragged this person to stand within their generation.
+// NULL means "wherever the layout puts you", which is almost everyone —
+// a whole row is renumbered at once when one of them is moved by hand.
+ensureColumn('persons', 'order_key', 'REAL');
+
 export const metaGet = (k, dflt = null) =>
   (db.prepare('SELECT value FROM meta WHERE key=?').get(k) || {}).value ?? dflt;
 export const metaSet = (k, v) =>
@@ -211,9 +232,22 @@ export const needsSetup = () => db.prepare('SELECT COUNT(*) c FROM users').get()
 // UNIQUE(a_id,b_id) constraint actually prevents duplicate pairs.
 export const pair = (x, y) => (Number(x) < Number(y) ? [Number(x), Number(y)] : [Number(y), Number(x)]);
 
-/** One transaction, rolled back on any throw. All multi-write routes use it. */
+/**
+ * One transaction, rolled back on any throw. All multi-write routes use it.
+ *
+ * Re-entrant: SQLite has no nested BEGIN, but the write handlers are meant
+ * to compose — seeding the demo family calls createPerson forty times, and
+ * each of those wants a transaction of its own. Only the outermost call
+ * actually begins and commits, so the whole batch still lands or doesn't.
+ */
+let txDepth = 0;
 export function tx(fn) {
+  if (txDepth > 0) {
+    txDepth++;
+    try { return fn(); } finally { txDepth--; }
+  }
   db.exec('BEGIN');
+  txDepth = 1;
   try {
     const out = fn();
     db.exec('COMMIT');
@@ -221,6 +255,8 @@ export function tx(fn) {
   } catch (err) {
     db.exec('ROLLBACK');
     throw err;
+  } finally {
+    txDepth = 0;
   }
 }
 

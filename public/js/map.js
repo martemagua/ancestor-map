@@ -1,55 +1,58 @@
-// The tree canvas: a force-assisted generational layout, union bars with
-// genealogy elbows, branch hulls, described relationships as thin threads,
-// and the gesture layer ported from Friend-Map.
+// The tree canvas: a tidy genealogy chart with the gestures of a map.
 //
-// The layout idea in one sentence: every person gets a *hard Y* — their
-// generation row (or, in Zeit mode, their birth year) — and the physics only
-// negotiates X, so the tree always reads as generations while still settling
-// organically. That is also why the Zeit toggle is almost free: it is the
-// same layout with a different Y function.
+// Where everyone stands is decided in layout.js and only drawn here. This
+// file owns the camera, the gestures, the collision field that keeps text
+// readable, the branch blobs — and the line language:
 //
-// map.js touches nothing at import time on purpose — tests/layout.test.js
-// imports it under plain node and checks the layout rules without a canvas.
+//   partners   a short horizontal bar between two adjacent dots
+//   descent    an orthogonal drop from the union, a sibling bar across the
+//              children, a short drop to each of them
+//   others     described relationships, drawn only when you ask for them,
+//              because as permanent diagonals they crossed everything
+//
+// Nothing runs at import time — tests/layout.test.js imports this under
+// plain node to check the rules without a canvas.
 import { api } from './api.js';
 import {
-  S, colorOf, passesFilters, matchesSearch, inSpotlight, relsOf, otherEnd, relKind,
-  branchesWithParents, branchesOf, parentsOfP, childrenOfP, spousesOfP,
+  S, colorOf, passesFilters, matchesSearch, inSpotlight, relsOf, otherEnd,
+  branchesWithParents, parentsOfP, childrenOfP, spousesOfP,
   unionPartners, unionChildren,
 } from './store.js';
+import { computeLayout, reorderRow, ROW } from './layout.js';
 import { t } from './i18n.js';
 
-const PHYS = {
-  repel: 15000, damp: 0.86, dt: 0.55, maxV: 26,
-  row: 0.42,        // the hard Y — generations own the vertical axis
-  union: 0.09,      // partners pull side by side
-  child: 0.05,      // a child aligns under its parents' union
-  rel: 0.004,       // described relationships barely tug — they are threads, not structure
-  branch: 0.02,     // branch members drift together in X
-  gravityX: 0.003,  // a weak pull toward the middle, X only — rows need room to breathe
-};
-export const ROW = 175;            // world units between generation rows
+export { ROW };
 export const YEAR_PX = 3.4;        // world units per year in Zeit mode
-const UNION_REST = 78;             // how close a couple stands
+const EASE = 0.18;                 // how fast people slide to where they belong
 const FONT_BODY = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const FONT_DISPLAY = '"Helvetica Neue", Helvetica, Arial, sans-serif';
 
 let cv, ctx, dpr = 1;
 let cam = { x: 0, y: 0, scale: 0.9 };
-let alpha = 0, looping = false, physicsOn = true;
+let looping = false;
 let drag = null, dragMoved = false, tapCandidate = null, pointerStart = null, pinch = null;
 let pressTimer = null, pressFired = false;   // a long press spotlights, it never opens the card
 let lastPinchAt = 0;                          // lifting two fingers fires the same pointerup a tap does
 let onSelect = () => {};
 let highlight = null;                         // { people:Set, rels:Set }
-let saveTimer = null;
 let camFollows = true;
 let mode = 'gen';                             // 'gen' | 'zeit'
 let showAllEdges = false;
+let layout = null, layoutDirty = true;
 
 export const allEdgesShown = () => showAllEdges;
 export function setAllEdges(on) { showAllEdges = Boolean(on); draw(); }
 export const layoutMode = () => mode;
-export function setLayoutMode(m) { mode = m === 'zeit' ? 'zeit' : 'gen'; }
+export function setLayoutMode(m) {
+  mode = m === 'zeit' ? 'zeit' : 'gen';
+  relayout();
+}
+
+/** The arrangement is stale — recompute it and slide everyone into place. */
+export function relayout() {
+  layoutDirty = true;
+  if (!looping && cv) { looping = true; requestAnimationFrame(tick); }
+}
 
 export function initMap(canvas, opts = {}) {
   cv = canvas;
@@ -89,21 +92,19 @@ const s2w = (sx, sy) => [(sx - cv.clientWidth / 2) / cam.scale + cam.x, (sy - cv
 
 function radiusOf(p) {
   if (p.id === S.probandId) return 20;
-  const away = Math.abs(p._gen ?? 0);
-  return away >= 3 ? 11 : 13;
+  return Math.abs(p._gen ?? 0) >= 3 ? 12 : 14;
 }
 
 // ------------------------------------------------------------------ layout rules
 //
-// Everything in this section is a pure function of the graph — no canvas, no
-// camera — which is exactly what tests/layout.test.js checks.
+// Pure functions of the graph — no canvas, no camera — which is what
+// tests/layout.test.js checks.
 
 /**
  * Signed generations, walked out from the proband: a parent is +1, a child
  * −1, a partner ±0. First visit wins — a marriage across generations keeps
  * the reading closest to the proband, which is the honest choice when the
- * graph genuinely disagrees with itself. Unreached people (a described-only
- * connection, an island) sit at 0 and let the physics find them a seat.
+ * graph genuinely disagrees with itself.
  */
 export function indexGenerations(people) {
   const shown = new Set(people.map(p => p.id));
@@ -137,9 +138,7 @@ export const genY = gen => (gen ? -gen * ROW : 0);
  * A year for everyone the Zeit axis can seat. Missing birth years are
  * estimated from the family around them — parents put a child ~28 years
  * later, children put a parent ~28 earlier, partners sit level — over a few
- * passes, so a chain of undated people still finds its place. Someone only a
- * death year knows gets a working life's guess. Whoever remains unseated
- * falls back to their generation row.
+ * passes, so a chain of undated people still finds its place.
  */
 export function indexYears(people) {
   for (const p of people) p._year = p.birth_year ?? null;
@@ -174,18 +173,11 @@ export function zeitBase(people) {
 
 export const zeitY = (year, base) => (year - base) * YEAR_PX;
 
-/** Where a person's row wants them, in the current mode. */
-function yTargetOf(p, base) {
-  if (mode === 'zeit' && p._year != null) return zeitY(p._year, base);
-  return genY(p._gen);
-}
-
 /**
- * How much of a described-relationship thread to draw, 0..1 — same idea as
- * Friend-Map's rule: a score against a threshold that falls as you zoom in,
- * fading over a band instead of switching. The tree structure (unions,
- * children) is never thinned — it *is* the map; only the threads earn their
- * place. Exported and handed the zoom so the rule tests without a canvas.
+ * How much of a described-relationship thread to draw, 0..1 — a score
+ * against a threshold that falls as you zoom in. The tree structure is
+ * never thinned; only these earn their place. Handed the zoom rather than
+ * reading the camera, so the rule tests without a canvas.
  */
 export function edgeRoom(r, a, b, scale, all = false) {
   if (all) return 1;
@@ -198,6 +190,20 @@ export function edgeRoom(r, a, b, scale, all = false) {
 }
 
 /** A thread's words cost more than its line — they come once it is nearly full. */
+/**
+ * How far the sibling bar has to reach: across every child *and* out to the
+ * union's own anchor.
+ *
+ * Spanning only the children breaks the line whenever the anchor is not
+ * above them — an only child who sits a little to the side of their parents
+ * then gets two verticals with nothing joining them, which is the one thing
+ * a descent line must never look like. With two or more children the anchor
+ * is nearly always inside the span already, which is why this only showed up
+ * on single children.
+ */
+export const shelfSpan = (anchorX, kidXs) =>
+  [Math.min(anchorX, ...kidXs), Math.max(anchorX, ...kidXs)];
+
 export const labelEarned = (r, a, b, scale, all = false) =>
   scale > 0.9 && edgeRoom(r, a, b, scale, all) >= 0.85;
 
@@ -207,143 +213,60 @@ function visiblePeople() {
   const list = S.persons.filter(p => passesFilters(p));
   indexGenerations(list);
   if (mode === 'zeit') indexYears(list);
-  for (const p of list) {
-    // One NaN coordinate poisons every neighbour's velocity within a frame.
-    // New arrivals start beside their family and *on their row* — starting in
-    // a heap makes the physics untangle what the rows already know.
-    if (p.x == null || p.y == null || isNaN(p.x) || isNaN(p.y)) {
-      const anchorId = [...parentsOfP(p.id), ...spousesOfP(p.id), ...childrenOfP(p.id)][0];
-      const anchor = S.personById[anchorId];
-      p.x = (anchor?.x ?? 0) + (Math.random() * 160 - 80);
-      p.y = genY(p._gen) + (Math.random() * 20 - 10);
-      p.vx = 0; p.vy = 0;
-    }
-  }
   return list;
 }
 
-/** Unions with at least one shown partner — what the bars and elbows draw. */
-function visibleUnions(shownSet) {
-  const out = [];
-  for (const u of S.unions) {
-    const partners = unionPartners(u.id).filter(id => shownSet.has(id)).map(id => S.personById[id]).filter(Boolean);
-    const kids = unionChildren(u.id).filter(id => shownSet.has(id)).map(id => S.personById[id]).filter(Boolean);
-    if (!partners.length || (partners.length < 2 && !kids.length)) continue;
-    out.push({ u, partners, kids });
+/** Recompute where everyone belongs, and give them somewhere to slide from. */
+function rebuild(people) {
+  const base = mode === 'zeit' ? zeitBase(people) : 0;
+  layout = computeLayout(people, {
+    unions: S.unions,
+    partnersOf: uid => unionPartners(uid),
+    childrenOf: uid => unionChildren(uid),
+    unionsOf: id => (S.unionsOfPerson[id] || []),
+    parentUnionsOf: id => (S.parentUnionsOf[id] || []),
+    yOf: p => (mode === 'zeit' && p._year != null ? zeitY(p._year, base) : genY(p._gen)),
+  });
+  for (const p of people) {
+    const seat = layout.people.get(p.id);
+    if (!seat) continue;
+    p.tx = seat.x; p.ty = seat.y;
+    // Somebody arriving for the first time starts where they belong rather
+    // than sliding in from a corner of the world — and "arriving" means the
+    // map has never seated them, not that they have no coordinates. Persons
+    // still carry x/y from the days of the force simulation, and those
+    // describe an arrangement that no longer exists: trusted as a starting
+    // point they left the whole tree in a heap until something happened to
+    // relayout it. Only a position this map itself put someone in is worth
+    // sliding from.
+    if (!p._seated) { p.x = seat.x; p.y = seat.y; p._seated = true; }
   }
-  return out;
+  layoutDirty = false;
 }
 
-// ------------------------------------------------------------------ physics
-
-function step(people) {
-  const n = people.length;
-  const base = mode === 'zeit' ? zeitBase(people) : 0;
-
-  for (let i = 0; i < n; i++) {
-    const a = people[i];
-    for (let j = i + 1; j < n; j++) {
-      const b = people[j];
-      let dx = b.x - a.x, dy = b.y - a.y;
-      let d2 = dx * dx + dy * dy;
-      if (d2 < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = 1; }
-      if (d2 > 900 * 900) continue;
-      // People in the same row shove hardest — that is where seats are scarce.
-      const sameRow = Math.abs(a.y - b.y) < ROW * 0.5 ? 1 : 0.35;
-      const f = PHYS.repel * sameRow / d2;
-      const d = Math.sqrt(d2);
-      const fx = (dx / d) * f, fy = (dy / d) * f;
-      a.vx -= fx; a.vy -= fy * 0.06;     // Y belongs to the rows; repulsion argues over X
-      b.vx += fx; b.vy += fy * 0.06;
-    }
-  }
-
-  const shown = new Set(people.map(p => p.id));
-
-  // Couples stand together; children stand under the middle of their union.
-  for (const { partners, kids } of visibleUnions(shown)) {
-    if (partners.length === 2) {
-      const [a, b] = partners;
-      const dx = b.x - a.x;
-      const d = Math.abs(dx) || 1;
-      const f = (d - UNION_REST) * PHYS.union * Math.sign(dx);
-      a.vx += f; b.vx -= f;
-    }
-    if (kids.length) {
-      const midX = partners.reduce((s, p) => s + p.x, 0) / partners.length;
-      // Children spread around the union's middle instead of piling onto it.
-      const spread = (kids.length - 1) * 55;
-      const ordered = [...kids].sort((a, b) => (a.birth_year ?? 9999) - (b.birth_year ?? 9999) || a.id - b.id);
-      ordered.forEach((kid, i) => {
-        const want = midX - spread / 2 + i * (kids.length > 1 ? spread / (kids.length - 1) : 0);
-        kid.vx += (want - kid.x) * PHYS.child;
-        // Parents feel their children a little too, so a branch doesn't drift
-        // away from where its next generation settled.
-        for (const parent of partners) parent.vx += (kid.x - parent.x) * PHYS.child * 0.15;
-      });
-    }
-  }
-
-  // Described relationships are threads, not structure: the faintest tug.
-  for (const r of S.relationships) {
-    if (!shown.has(r.a_id) || !shown.has(r.b_id)) continue;
-    const a = S.personById[r.a_id], b = S.personById[r.b_id];
-    if (!a || !b) continue;
-    const dx = b.x - a.x;
-    a.vx += dx * PHYS.rel;
-    b.vx -= dx * PHYS.rel;
-  }
-
-  // Branch members drift together in X — one pull per branch toward its
-  // middle, split across memberships, exactly Friend-Map's circle force
-  // turned sideways. The stored (innermost) membership pulls, not the
-  // inherited one, or a sub-branch would be dragged to its parent's middle.
-  const middles = new Map();
+/** Slide everyone toward their seat; true while anyone is still moving. */
+function settle(people) {
+  let moving = false;
   for (const p of people) {
-    for (const bid of branchesOf(p)) {
-      if (!S.activeBranches.has(bid)) continue;
-      const m = middles.get(bid) || [0, 0];
-      m[0] += p.x; m[1]++;
-      middles.set(bid, m);
-    }
+    if (drag?.person === p) continue;
+    if (p.tx == null) continue;
+    const dx = p.tx - p.x, dy = p.ty - p.y;
+    if (Math.abs(dx) < 0.4 && Math.abs(dy) < 0.4) { p.x = p.tx; p.y = p.ty; continue; }
+    p.x += dx * EASE;
+    p.y += dy * EASE;
+    moving = true;
   }
-
-  for (const p of people) {
-    if (drag && drag.person === p) { p.vx = 0; p.vy = 0; continue; }
-    if (p.id === S.probandId && mode === 'gen') {
-      // The proband anchors the view: X held at 0, the row owns Y anyway.
-      p.vx += (0 - p.x) * 0.1;
-    }
-    // The hard Y: the row (or the year) pulls far harder than anything else.
-    p.vy += (yTargetOf(p, base) - p.y) * PHYS.row;
-    p.vx -= p.x * PHYS.gravityX;
-
-    const mine = branchesOf(p).filter(bid => middles.get(bid)?.[1] > 1);
-    for (const bid of mine) {
-      const m = middles.get(bid);
-      p.vx += (m[0] / m[1] - p.x) * (PHYS.branch / mine.length);
-    }
-
-    p.vx *= PHYS.damp; p.vy *= PHYS.damp;
-    const v = Math.hypot(p.vx, p.vy);
-    if (v > PHYS.maxV) { p.vx = (p.vx / v) * PHYS.maxV; p.vy = (p.vy / v) * PHYS.maxV; }
-    p.x += p.vx * PHYS.dt * alpha;
-    p.y += p.vy * PHYS.dt * alpha;
-  }
-  alpha *= 0.985;
+  return moving;
 }
 
 function tick() {
   const people = visiblePeople();
-  if (physicsOn && alpha > 0.005) step(people);
+  if (layoutDirty) rebuild(people);
+  const moving = settle(people);
   if (camFollows) followCluster(people);
   drawScene(people);
-  if (physicsOn && alpha > 0.005) {
-    requestAnimationFrame(tick);
-  } else {
-    looping = false;
-    if (physicsOn) schedulePersist();
-  }
+  if (moving || drag) requestAnimationFrame(tick);
+  else looping = false;
 }
 
 function followCluster(people) {
@@ -355,48 +278,20 @@ function followCluster(people) {
   cam.y += (cy - cam.y) * 0.08;
 }
 
-export function reheat(a = 0.8) {
-  if (!physicsOn) return;
-  alpha = Math.max(alpha, a);
-  if (!looping) { looping = true; requestAnimationFrame(tick); }
-}
-
-export function setPhysics(on) {
-  physicsOn = on;
-  if (on) reheat(0.6); else { looping = false; persistPositions(); draw(); }
-  return physicsOn;
-}
-export const physicsEnabled = () => physicsOn;
-
-export function shake() {
-  if (!physicsOn) setPhysics(true);
-  for (const p of S.persons) {
-    if (p.id === S.probandId) continue;
-    p.vx += (Math.random() - 0.5) * 60;
-  }
-  reheat(1);
-}
-
-function schedulePersist() {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(persistPositions, 1200);
-}
-
-async function persistPositions() {
-  // Viewers may rearrange their own screen, but the write route is editors'
-  // only — posting anyway would 403 after every settle, forever.
-  if (!['editor', 'admin'].includes(S.user?.role)) return;
-  const payload = S.persons.filter(p => p.x != null && !isNaN(p.x) && !isNaN(p.y))
-    .map(p => ({ id: p.id, x: p.x, y: p.y }));
-  if (!payload.length) return;
-  try { await api.post('/api/positions', payload); } catch { /* offline is fine */ }
+/** Throw away every hand-made arrangement and let the layout decide again. */
+export async function resetArrangement() {
+  try { await api.del('/api/layout-order'); } catch { /* reported by the caller */ }
+  for (const p of S.persons) p.order_key = null;
+  relayout();
 }
 
 // ------------------------------------------------------------------ drawing
 
 export function draw() {
   if (!ctx) return;
-  drawScene(visiblePeople());
+  const people = visiblePeople();
+  if (layoutDirty) rebuild(people);
+  drawScene(people);
 }
 
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -450,75 +345,100 @@ function drawScene(people) {
 
   const shown = new Set(people.map(p => p.id));
 
-  // ---- the tree itself: union bars and child elbows. Never thinned — the
-  // structure is the map. An elbow: down from the union's middle to the gap
-  // between the rows, across, then down to the child.
+  // ---- the tree itself. Never thinned: the structure is the map.
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  for (const { u, partners, kids } of visibleUnions(shown)) {
-    const pts = partners.map(p => w2s(p.x, p.y));
-    const anchorX = pts.reduce((s, q) => s + q[0], 0) / pts.length;
-    const anchorY = pts.reduce((s, q) => s + q[1], 0) / pts.length;
-    const litBar = highlight && partners.every(p => highlight.people.has(p.id));
-    const dimBar = (highlight && !litBar) || partners.some(p => !inSpotlight(p));
+  for (const u of layout?.unions || []) {
+    const seats = u.partners.filter(id => shown.has(id)).map(id => S.personById[id]).filter(Boolean);
+    const kids = u.kids.filter(id => shown.has(id)).map(id => S.personById[id]).filter(Boolean);
+    if (!seats.length) continue;
+    const litUnion = highlight && seats.every(p => highlight.people.has(p.id));
+    const dimUnion = (highlight && !litUnion) || seats.some(p => !inSpotlight(p));
 
-    if (partners.length === 2) {
+    // The partner bar — short and horizontal, because the two of them are
+    // neighbours in their row by construction.
+    if (seats.length === 2) {
+      const [a, b] = seats.map(p => w2s(p.x, p.y));
       ctx.save();
-      ctx.globalAlpha = dimBar ? 0.12 : 0.85;
-      ctx.strokeStyle = litBar ? css('--accent') : love;
-      ctx.lineWidth = Math.max(1.2, 2.4 * Math.min(1.4, cam.scale));
-      if (u.kind !== 'ehe') ctx.setLineDash(u.kind === 'partnerschaft' ? [] : [4, 4]);
-      if (u.kind === 'partnerschaft') ctx.lineWidth *= 0.7;
-      ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); ctx.lineTo(pts[1][0], pts[1][1]); ctx.stroke();
+      ctx.globalAlpha = dimUnion ? 0.12 : 0.9;
+      ctx.strokeStyle = litUnion ? css('--accent') : love;
+      ctx.lineWidth = Math.max(1.6, 3 * Math.min(1.4, cam.scale));
+      if (u.kind === 'partnerschaft') ctx.setLineDash([7, 5]);
+      else if (u.kind !== 'ehe') ctx.setLineDash([2, 5]);
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
       ctx.restore();
     }
 
-    for (const kid of kids) {
-      const [kx, ky] = w2s(kid.x, kid.y);
-      const lit = highlight && highlight.people.has(kid.id)
-        && partners.some(p => highlight.people.has(p.id));
-      const dim = (highlight && !lit) || !inSpotlight(kid) || partners.some(p => !inSpotlight(p));
-      // The shelf sits in the gap between the parents' row and the child's.
-      const shelfY = anchorY + (ky - anchorY) * 0.55;
+    if (!kids.length) continue;
+
+    // The descent: down from between the parents, a sibling bar across all
+    // the children, then a short drop onto each of them. This is the shape
+    // every family chart uses, and it is why siblings read as siblings.
+    const anchor = w2s(seats.reduce((s, p) => s + p.x, 0) / seats.length,
+      seats.reduce((s, p) => s + p.y, 0) / seats.length);
+    const kidPts = kids.map(k => ({ k, pt: w2s(k.x, k.y) }));
+    const topKid = Math.min(...kidPts.map(({ pt }) => pt[1]));
+    // The lane the layout gave this family keeps its sibling bar off the one
+    // beside it — see laneShelves() for why that is not cosmetic.
+    const lane = (u.lane + 0.5) / (u.lanes || 1);
+    const shelf = anchor[1] + (topKid - anchor[1]) * (0.34 + 0.46 * lane);
+    const dim = dimUnion;
+
+    ctx.save();
+    ctx.globalAlpha = dim ? 0.12 : 0.75;
+    ctx.strokeStyle = litUnion ? css('--accent') : family;
+    ctx.lineWidth = Math.max(1.1, 1.9 * Math.min(1.4, cam.scale));
+    ctx.beginPath();
+    ctx.moveTo(anchor[0], anchor[1]);
+    ctx.lineTo(anchor[0], shelf);
+    const [barL, barR] = shelfSpan(anchor[0], kidPts.map(({ pt }) => pt[0]));
+    if (barR - barL > 0.5) { ctx.moveTo(barL, shelf); ctx.lineTo(barR, shelf); }
+    ctx.stroke();
+    ctx.restore();
+
+    for (const { k, pt } of kidPts) {
+      const role = S.children.find(c => c.union_id === u.id && c.child_id === k.id)?.role;
       ctx.save();
-      ctx.globalAlpha = dim ? 0.12 : 0.7;
-      ctx.strokeStyle = lit ? css('--accent') : family;
-      ctx.lineWidth = Math.max(1, 1.7 * Math.min(1.4, cam.scale));
-      const role = S.children.find(c => c.union_id === u.id && c.child_id === kid.id)?.role;
+      ctx.globalAlpha = dim || !inSpotlight(k) ? 0.12 : 0.75;
+      ctx.strokeStyle = litUnion && highlight?.people.has(k.id) ? css('--accent') : family;
+      ctx.lineWidth = Math.max(1.1, 1.9 * Math.min(1.4, cam.scale));
+      // Only the child's own drop is dashed: the family they were taken
+      // into is no less theirs, but how they arrived is worth saying.
       if (role && role !== 'leiblich') ctx.setLineDash([5, 4]);
       ctx.beginPath();
-      ctx.moveTo(anchorX, anchorY);
-      ctx.lineTo(anchorX, shelfY);
-      ctx.lineTo(kx, shelfY);
-      ctx.lineTo(kx, ky);
+      ctx.moveTo(pt[0], shelf);
+      ctx.lineTo(pt[0], pt[1]);
       ctx.stroke();
       ctx.restore();
     }
   }
 
-  // ---- described relationships: thin threads, earned like names.
+  // ---- described relationships. Off unless you ask: as permanent
+  // diagonals across the whole chart they buried everything else.
   const edgeLabels = [];
-  for (const r of S.relationships) {
-    if (!shown.has(r.a_id) || !shown.has(r.b_id)) continue;
-    const a = S.personById[r.a_id], b = S.personById[r.b_id];
-    if (!a || !b) continue;
-    const lit = highlight?.rels.has(r.id);
-    const dimmed = (highlight && !lit) || !inSpotlight(a) || !inSpotlight(b);
-    const room = lit || searching ? 1 : edgeRoom(r, a, b, cam.scale, showAllEdges);
-    if (room <= 0.01) continue;
+  if (highlight || showAllEdges) {
+    for (const r of S.relationships) {
+      if (!shown.has(r.a_id) || !shown.has(r.b_id)) continue;
+      const a = S.personById[r.a_id], b = S.personById[r.b_id];
+      if (!a || !b) continue;
+      const lit = highlight?.rels.has(r.id);
+      if (highlight && !lit && !showAllEdges) continue;
+      const room = lit ? 1 : edgeRoom(r, a, b, cam.scale, showAllEdges);
+      if (room <= 0.01) continue;
 
-    const [x1, y1] = w2s(a.x, a.y), [x2, y2] = w2s(b.x, b.y);
-    ctx.save();
-    ctx.globalAlpha = (dimmed ? 0.1 : lit ? 1 : 0.5) * room;
-    ctx.lineWidth = lit ? 3.5 : Math.max(0.8, 1.1 * Math.min(1.4, cam.scale));
-    ctx.setLineDash([2, 5]);
-    ctx.strokeStyle = lit ? css('--accent') : line;
-    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-    ctx.restore();
+      const [x1, y1] = w2s(a.x, a.y), [x2, y2] = w2s(b.x, b.y);
+      ctx.save();
+      ctx.globalAlpha = (lit ? 0.95 : 0.4) * room;
+      ctx.lineWidth = lit ? 3 : Math.max(0.8, 1.1 * Math.min(1.4, cam.scale));
+      ctx.setLineDash([2, 5]);
+      ctx.strokeStyle = lit ? css('--accent') : line;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.restore();
 
-    const reason = r.label || t('rel.' + r.kind);
-    if (reason && !dimmed && (lit || labelEarned(r, a, b, cam.scale, showAllEdges))) {
-      edgeLabels.push({ reason, x1, y1, x2, y2, lit, room });
+      const reason = r.label || t('rel.' + r.kind);
+      if (reason && (lit || labelEarned(r, a, b, cam.scale, showAllEdges))) {
+        edgeLabels.push({ reason, x1, y1, x2, y2, lit, room });
+      }
     }
   }
 
@@ -532,13 +452,15 @@ function drawScene(people) {
     const dead = Boolean(p.death) || (p.death_year != null);
 
     ctx.save();
-    ctx.globalAlpha = dimmed ? 0.16 : dead ? 0.82 : 1;
+    ctx.globalAlpha = dimmed ? 0.16 : 1;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fillStyle = p.id === S.probandId ? ink : (colorOf(p) || css('--ungrouped') || '#9A968C');
     ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = paper;
+    // Someone who has died wears a ring rather than a solid edge — the one
+    // fact a chart of a family should be able to show without a word.
+    ctx.lineWidth = dead ? 2.5 : 2;
+    ctx.strokeStyle = dead ? ink3 : paper;
     ctx.stroke();
     if (lit || hit) {
       ctx.beginPath();
@@ -551,8 +473,8 @@ function drawScene(people) {
     ctx.restore();
   }
 
-  // ---- names, earned like Friend-Map's: scored against a threshold that
-  // falls as you zoom in, and never drawn over something already there.
+  // ---- names, earned: scored against a threshold that falls as you zoom
+  // in, and never drawn over something already there.
   const room = 7.4 - Math.min(1.9, cam.scale) * 5.2;
   const spotlight = S.litBranches.size > 0;
   const ranked = people
@@ -634,8 +556,8 @@ function drawScene(people) {
 
 /** The Zeit mode's backdrop: a faint decade ruler behind the whole tree. */
 function drawYearRuler(H, W, base, ink3, line) {
-  const [, topYear] = [0, base + s2w(0, 0)[1] / YEAR_PX];
-  const [, botYear] = [0, base + s2w(0, H)[1] / YEAR_PX];
+  const topYear = base + s2w(0, 0)[1] / YEAR_PX;
+  const botYear = base + s2w(0, H)[1] / YEAR_PX;
   const span = Math.abs(botYear - topYear);
   const stepYears = span > 260 ? 50 : span > 110 ? 25 : 10;
   const first = Math.ceil(Math.min(topYear, botYear) / stepYears) * stepYears;
@@ -658,7 +580,7 @@ function drawYearRuler(H, W, base, ink3, line) {
 
 /**
  * Members of one branch actually sitting together, by single linkage — one
- * blob per huddle, never one hull the size of the map. Ported verbatim.
+ * blob per huddle, never one hull the size of the map.
  */
 function huddles(members, reach) {
   const groups = [];
@@ -791,15 +713,16 @@ function convexHull(points) {
 export function fitView(padding = 70) {
   camFollows = true;
   const people = visiblePeople();
+  if (layoutDirty) rebuild(people);
   if (!people.length) { cam = { x: 0, y: 0, scale: 0.9 }; draw(); return; }
-  const xs = people.map(p => p.x), ys = people.map(p => p.y);
+  const xs = people.map(p => p.tx ?? p.x), ys = people.map(p => p.ty ?? p.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minY = Math.min(...ys), maxY = Math.max(...ys);
   cam.x = (minX + maxX) / 2;
   cam.y = (minY + maxY) / 2;
   const sx = (cv.clientWidth - padding * 2) / Math.max(1, maxX - minX);
   const sy = (cv.clientHeight - padding * 2) / Math.max(1, maxY - minY);
-  cam.scale = Math.max(0.25, Math.min(1.1, Math.min(sx, sy)));
+  cam.scale = Math.max(0.15, Math.min(1.1, Math.min(sx, sy)));
   draw();
 }
 
@@ -807,7 +730,7 @@ export function focusPerson(id, scale = 1.1) {
   const p = S.personById[id];
   if (!p || p.x == null) return;
   camFollows = false;
-  cam.x = p.x; cam.y = p.y;
+  cam.x = p.tx ?? p.x; cam.y = p.ty ?? p.y;
   cam.scale = Math.max(cam.scale, scale);
   draw();
 }
@@ -821,7 +744,7 @@ export function setHighlight(people, rels) {
  * One person's whole immediate world: parents, partners, children, siblings
  * and every described relationship, lit — everyone else stepping back. It
  * holds until a tap on empty ground; while it holds the map is in reading
- * mode and a finger pans, exactly like Friend-Map's spotlight.
+ * mode and a finger pans.
  */
 export function spotlightPerson(id) {
   const rels = relsOf(id);
@@ -886,13 +809,12 @@ function onMove(e) {
   clearTimeout(pressTimer);              // a moving finger is a drag, not a press
 
   if (drag.person) {
-    const [wx] = s2w(sx, sy);
-    // Dragging rearranges the row, not the generations: X follows the finger,
-    // Y stays the row's. In Zeit mode the year is the truth — same rule.
+    // Lift them right out of the chart — both directions, wherever the
+    // finger goes. Where they belong is decided again on release.
+    const [wx, wy] = s2w(sx, sy);
     drag.person.x = wx;
-    drag.person.vx = 0; drag.person.vy = 0;
-    reheat(0.45);
-    if (!physicsOn) draw();
+    drag.person.y = wy;
+    if (!looping) { looping = true; requestAnimationFrame(tick); }
   } else {
     camFollows = false;
     cam.x -= dx / cam.scale;
@@ -905,7 +827,31 @@ function onMove(e) {
 function onCancel() {
   clearTimeout(pressTimer);
   pressFired = false;
+  if (drag?.person) relayout();          // snap back to where they belong
   drag = null; tapCandidate = null; dragMoved = false;
+}
+
+/**
+ * Let go and the person falls back into their generation — but where they
+ * landed along the row is kept: their row is renumbered in the order it now
+ * reads, saved, and the layout leaves that generation alone from then on.
+ * The automatic arrangement is a good guess, not an argument.
+ */
+async function dropPerson(person) {
+  const row = (layout?.cells || []).filter(c => c.gen === person._gen);
+  const keys = reorderRow(row, person.id, person.x);
+  // The keys go on before the relayout, not after: the layout reads them to
+  // decide the row, so setting them afterwards would draw the old order once
+  // and only settle into the new one on the next redraw.
+  for (const { id, key } of keys) {
+    const p = S.personById[id];
+    if (p) p.order_key = key;
+  }
+  relayout();
+  // A viewer may rearrange their own screen all they like; the server would
+  // only answer their save with a 403, so it is never asked.
+  if (!keys.length || !['editor', 'admin'].includes(S.user?.role)) return;
+  try { await api.post('/api/layout-order', keys); } catch { /* the screen is already right */ }
 }
 
 function onUp() {
@@ -917,8 +863,7 @@ function onUp() {
   }
   const zooming = pinch || Date.now() - lastPinchAt < 350;
   if (drag?.person && dragMoved) {
-    if (physicsOn) reheat(0.4);
-    schedulePersist();
+    dropPerson(drag.person);
   } else if (tapCandidate && !dragMoved && !zooming) {
     spotlightPerson(tapCandidate.id);
     onSelect(tapCandidate.id);
@@ -937,7 +882,7 @@ function onWheel(e) {
 function zoomAt(sx, sy, factor) {
   camFollows = false;
   const [wx, wy] = s2w(sx, sy);
-  cam.scale = Math.max(0.15, Math.min(3.2, cam.scale * factor));
+  cam.scale = Math.max(0.1, Math.min(3.2, cam.scale * factor));
   const [nx, ny] = s2w(sx, sy);
   cam.x += wx - nx;
   cam.y += wy - ny;
@@ -954,6 +899,7 @@ function onTouchStart(e) {
     // The first finger already armed a tap. It is a zoom now — not a tap,
     // and not a long press either.
     clearTimeout(pressTimer);
+    if (drag?.person) relayout();
     drag = null; tapCandidate = null; dragMoved = false;
     lastPinchAt = Date.now();
     const r = cv.getBoundingClientRect();
