@@ -810,22 +810,28 @@ export function openBranchForm(id = null) {
 export function openLegend() {
   const sample = (inner, w = 60) => `<svg width="${w}" height="26" viewBox="0 0 ${w} 26"
     style="flex:none" aria-hidden="true">${inner}</svg>`;
-  const dot = (cx, fill = 'var(--family)') => `<circle cx="${cx}" cy="13" r="6" fill="${fill}"/>`;
+  const dot = (cx, cy = 13, fill = 'var(--ungrouped)') =>
+    `<circle cx="${cx}" cy="${cy}" r="6" fill="${fill}"/>`;
 
   const rows = [
-    [sample(`${dot(10, 'var(--ungrouped)')}<line x1="16" y1="13" x2="44" y2="13"
-        stroke="var(--love)" stroke-width="3"/>${dot(50, 'var(--ungrouped)')}`), t('leg.married')],
-    [sample(`${dot(10, 'var(--ungrouped)')}<line x1="16" y1="13" x2="44" y2="13"
-        stroke="var(--love)" stroke-width="3" stroke-dasharray="7 5"/>${dot(50, 'var(--ungrouped)')}`), t('leg.partners')],
-    [sample(`<path d="M30 2 V10 H12 V18 M30 10 H48 V18" fill="none"
-        stroke="var(--family)" stroke-width="2"/>${dot(12, 'var(--ungrouped)')}${dot(48, 'var(--ungrouped)')}`),
-    t('leg.children')],
-    [sample(`<path d="M30 2 V10 H30 V18" fill="none" stroke="var(--family)"
-        stroke-width="2" stroke-dasharray="5 4"/>${dot(30, 'var(--ungrouped)')}`), t('leg.adopted')],
+    [sample(`${dot(10)}<line x1="16" y1="13" x2="44" y2="13"
+        stroke="var(--love)" stroke-width="3"/>${dot(50)}`), t('leg.married')],
+    [sample(`${dot(10)}<line x1="16" y1="13" x2="44" y2="13"
+        stroke="var(--love)" stroke-width="3" stroke-dasharray="7 5"/>${dot(50)}`), t('leg.partners')],
+    [sample(`<path d="M30 1 V7 H12 V15 M30 7 H48 V15" fill="none"
+        stroke="var(--family)" stroke-width="2"/>${dot(12, 20)}${dot(48, 20)}`), t('leg.children')],
+    // Both drops at once, because the dashed one only means anything beside
+    // the plain one it is being told apart from.
+    [sample(`<path d="M30 1 V7 H12 V15" fill="none" stroke="var(--family)" stroke-width="2"/>
+      <path d="M30 7 H48 V15" fill="none" stroke="var(--family)" stroke-width="2"
+        stroke-dasharray="4 3"/>${dot(12, 20)}${dot(48, 20)}`), t('leg.adopted')],
     [sample(`<line x1="6" y1="20" x2="54" y2="6" stroke="var(--line-2)"
         stroke-width="2" stroke-dasharray="2 5"/>`), t('leg.described')],
-    [sample(`<circle cx="30" cy="13" r="7" fill="var(--ungrouped)" stroke="var(--ink-3)" stroke-width="2.5"/>`),
-      t('leg.died')],
+    // The living wear the paper-coloured edge, the dead a drawn ring; side
+    // by side is the only way that difference is a difference.
+    [sample(`<circle cx="16" cy="13" r="7" fill="var(--ungrouped)" stroke="var(--paper)" stroke-width="2"/>
+      <circle cx="44" cy="13" r="7" fill="var(--ungrouped)" stroke="var(--ink-3)" stroke-width="2.5"/>`),
+    t('leg.died')],
     [sample(`<circle cx="30" cy="13" r="8" fill="var(--ink)"/>`), t('leg.proband')],
   ];
 
