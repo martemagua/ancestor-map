@@ -88,6 +88,84 @@ try {
     if (!body.includes('Willi')) throw new Error('the nickname from the folded details is not on the card');
   });
 
+  // The sequence that broke on real data: a parent exists with a child, the
+  // second parent arrives as "partner" — and must land in the same family,
+  // with the child under both. Then the link-existing mode ties two people
+  // who were typed in separately.
+  await step('a second parent completes the family instead of opening a new one', async () => {
+    await page.click('.sheet.show [data-close]');
+    await page.click('#fab');
+    await page.waitForSelector('.sheet.show [data-f="name"]');
+    await page.fill('.sheet [data-f="name"]', 'Grete Probe');
+    await page.selectOption('.sheet [data-f="sex"]', 'f');
+    await page.selectOption('.sheet [data-f="how"]', 'partner');
+    // The anchor: Wilhelm, picked by typing — and the partnership kind,
+    // which used to be unaskable outside the union form.
+    await page.click('.sheet [data-anchor] .ppick-chosen');
+    await page.fill('.sheet [data-anchor] input', 'Wilh');
+    await page.waitForSelector('.sheet [data-anchor] [data-pick]');
+    await page.dispatchEvent('.sheet [data-anchor] [data-pick]', 'pointerdown');
+    await page.selectOption('.sheet [data-f="union_kind"]', 'ehe');
+    await page.click('.sheet [data-save]');
+    await page.waitForSelector('.sheet.show .phead');
+
+    const family = await page.evaluate(async () => {
+      const { S } = await import('/js/store.js');
+      const wilhelm = S.persons.find(p => p.name === 'Wilhelm Probe');
+      const grete = S.persons.find(p => p.name === 'Grete Probe');
+      const me = S.persons.find(p => p.name === 'Alex Probe');
+      const unions = (S.unionsOfPerson[wilhelm.id] || []);
+      return {
+        unions: unions.length,
+        kind: S.unionById[unions[0]]?.kind,
+        together: (S.unionsOfPerson[grete.id] || [])[0] === unions[0],
+        childOfBoth: (S.childrenOfUnion[unions[0]] || []).includes(me.id),
+      };
+    });
+    if (family.unions !== 1) throw new Error(`Wilhelm has ${family.unions} unions — the family split`);
+    if (!family.together) throw new Error('Grete landed in a different union');
+    if (family.kind !== 'ehe') throw new Error(`the union kind is ${family.kind}, not the chosen ehe`);
+    if (!family.childOfBoth) throw new Error('the child does not hang under the completed couple');
+  });
+
+  await step('link-existing ties two people without creating anybody', async () => {
+    await page.click('.sheet.show [data-close]');
+    // Somebody typed in loose, then linked as Grete's child.
+    await page.click('#fab');
+    await page.waitForSelector('.sheet.show [data-f="name"]');
+    await page.fill('.sheet [data-f="name"]', 'Onkel Probe');
+    await page.selectOption('.sheet [data-f="how"]', '');
+    await page.click('.sheet [data-save]');
+    await page.waitForSelector('.sheet.show .phead');
+    await page.click('.sheet.show [data-close]');
+
+    await page.click('#fab');
+    await page.waitForSelector('.sheet.show [data-mode]');
+    await page.click('.sheet [data-mode] [data-seg="link"]');
+    await page.fill('.sheet [data-linkperson] input', 'Onkel');
+    await page.waitForSelector('.sheet [data-linkperson] [data-pick]');
+    await page.dispatchEvent('.sheet [data-linkperson] [data-pick]', 'pointerdown');
+    await page.selectOption('.sheet [data-f="how"]', 'child_of_person');
+    await page.click('.sheet [data-anchor] .ppick-chosen');
+    await page.fill('.sheet [data-anchor] input', 'Grete');
+    await page.waitForSelector('.sheet [data-anchor] [data-pick]');
+    await page.dispatchEvent('.sheet [data-anchor] [data-pick]', 'pointerdown');
+    const before = await page.evaluate(async () => (await import('/js/store.js')).S.persons.length);
+    await page.click('.sheet [data-save]');
+    await page.waitForSelector('.sheet.show .phead');
+
+    const out = await page.evaluate(async () => {
+      const { S } = await import('/js/store.js');
+      const onkel = S.persons.find(p => p.name === 'Onkel Probe');
+      const grete = S.persons.find(p => p.name === 'Grete Probe');
+      const parents = (S.parentUnionsOf[onkel.id] || [])
+        .flatMap(uid => S.partnersOfUnion[uid] || []);
+      return { count: S.persons.length, linked: parents.includes(grete.id) };
+    });
+    if (out.count !== before) throw new Error('linking created a person');
+    if (!out.linked) throw new Error('the existing person was not linked as her child');
+  });
+
   await step('editing adds a documented occupation', async () => {
     await page.click('.sheet.show [data-edit]');
     await page.waitForSelector('.sheet.show [data-f="occupation"]');

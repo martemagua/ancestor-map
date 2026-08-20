@@ -372,7 +372,13 @@ export function attachPlacePicker(input, { onPick } = {}) {
       <span><b>${escapeHtml(h.label)}</b>${h.sub ? `<span class="sub">${escapeHtml(h.sub)}</span>` : ''}</span>
     </button>`).join('');
     box.querySelectorAll('[data-hit]').forEach(el => {
-      el.onclick = () => {
+      // pointerdown, not click: a tap first blurs the input, the blur hides
+      // this list, and the click then lands on whatever moved underneath —
+      // which read as "the suggestions cannot be selected". pointerdown
+      // fires before the blur, and preventDefault keeps the focus where it
+      // is so the keyboard does not flicker shut on a phone.
+      el.onpointerdown = e => {
+        e.preventDefault();
         const hit = hits[Number(el.dataset.hit)];
         input.value = hit.label;
         lastSent = hit.label.trim().toLowerCase();
@@ -405,6 +411,9 @@ export function attachPlacePicker(input, { onPick } = {}) {
   // The family's places stand before a single letter is typed.
   input.addEventListener('focus', () => { if (box.hidden) show(knownPlaceHits(input.value.trim())); });
 
-  input.addEventListener('blur', () => setTimeout(hide, 150));   // let a click land first
+  // Selection happens on pointerdown (above), so the blur only has to wait
+  // out its own event turn — but a generous delay costs nothing and covers
+  // assistive tech that clicks without a pointer.
+  input.addEventListener('blur', () => setTimeout(hide, 250));
   return { hide };
 }

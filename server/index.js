@@ -223,6 +223,7 @@ on('GET', '/api/sources', 'viewer', ctx =>
 // ---- persons ---------------------------------------------------------------
 on('POST', '/api/persons', 'editor', ctx => R.createPerson(ctx.body, ctx.user.id));
 on('POST', '/api/positions', 'editor', ctx => R.savePositions(ctx.body));
+on('POST', /^\/api\/persons\/(\d+)\/connect$/, 'editor', ctx => R.connectPerson(ctx.params[0], ctx.body));
 on('POST', '/api/layout-order', 'editor', ctx => R.saveOrder(ctx.body));
 on('DELETE', '/api/layout-order', 'editor', () => R.clearOrder());
 on('PUT', /^\/api\/persons\/(\d+)$/, 'editor', ctx => R.updatePerson(ctx.params[0], ctx.body, ctx.user.id));

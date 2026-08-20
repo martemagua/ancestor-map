@@ -210,6 +210,64 @@ test('sources link to subjects', async () => {
   assert.equal(forWilhelm[0].title, 'Kirchenbuch Stettin 1890');
 });
 
+test('adding a partner completes the half-empty family, never a parallel one', async () => {
+  // The exact sequence that went wrong on real data: mother, then her father
+  // (a one-parent union), then her mother as the father's *partner* — which
+  // used to open a second, childless union beside the first, leaving the
+  // daughter dangling from the father alone with no form able to repair it.
+  const mutter = (await S.POST('/api/persons', { name: 'Conn Mutter' })).data;
+  const opa = (await S.POST('/api/persons', {
+    name: 'Conn Opa', sex: 'm', connect: { type: 'parent_of', id: mutter.id },
+  })).data;
+  const oma = (await S.POST('/api/persons', {
+    name: 'Conn Oma', sex: 'f', connect: { type: 'partner', id: opa.id, kind: 'ehe' },
+  })).data;
+
+  const g = (await S.GET('/api/graph')).data;
+  const unionsOf = pid => g.union_partners.filter(u => u.person_id === pid).map(u => u.union_id);
+  assert.equal(unionsOf(opa.id).length, 1, 'the grandfather has ONE union, not two');
+  assert.deepEqual(unionsOf(oma.id), unionsOf(opa.id), 'and the grandmother sits in it');
+  const family = g.unions.find(u => u.id === unionsOf(opa.id)[0]);
+  assert.equal(family.kind, 'ehe', 'the stated kind replaced the placeholder');
+  assert.ok(g.children.some(c => c.union_id === family.id && c.child_id === mutter.id),
+    'their daughter hangs off the completed union');
+});
+
+test('an existing person is placed in the tree through /connect', async () => {
+  const vater = (await S.POST('/api/persons', { name: 'Conn Vater', sex: 'm' })).data;
+  const tante = (await S.POST('/api/persons', { name: 'Conn Tante' })).data;
+  const mutter = (await S.GET('/api/graph')).data.persons.find(p => p.name === 'Conn Mutter');
+
+  // Two people typed in weeks apart become a couple...
+  assert.equal((await S.POST(`/api/persons/${vater.id}/connect`,
+    { type: 'partner', id: mutter.id, kind: 'partnerschaft' })).status, 200);
+  // ...and an existing person becomes a child of an existing person.
+  assert.equal((await S.POST(`/api/persons/${tante.id}/connect`,
+    { type: 'child_of_person', id: vater.id, role: 'adoptiert' })).status, 200);
+
+  const g = (await S.GET('/api/graph')).data;
+  const pairUnion = g.union_partners.filter(u => u.person_id === vater.id).map(u => u.union_id)
+    .find(uid => g.union_partners.some(u => u.union_id === uid && u.person_id === mutter.id));
+  assert.ok(pairUnion, 'the couple shares a union');
+  const kid = g.children.find(c => c.union_id === pairUnion && c.child_id === tante.id);
+  assert.ok(kid, "the aunt is that union's child — a parent with one union means one family");
+  assert.equal(kid.role, 'adoptiert', 'the role travelled with the link');
+
+  // Linking the same partner twice adds nothing.
+  await S.POST(`/api/persons/${vater.id}/connect`, { type: 'partner', id: mutter.id });
+  const again = (await S.GET('/api/graph')).data;
+  assert.equal(again.union_partners.filter(u => u.person_id === vater.id).length,
+    g.union_partners.filter(u => u.person_id === vater.id).length, 'no duplicate union appeared');
+
+  // A ring is refused at this door like every other: the grandfather cannot
+  // become his own granddaughter's child.
+  const opa = g.persons.find(p => p.name === 'Conn Opa');
+  const ring = await S.POST(`/api/persons/${opa.id}/connect`, { type: 'child_of_person', id: tante.id });
+  assert.equal(ring.status, 400);
+  // And garbage is named as such rather than crashing.
+  assert.equal((await S.POST(`/api/persons/${opa.id}/connect`, { type: 'nonsense', id: 1 })).status, 400);
+});
+
 test('positions save, empty coordinates are ignored', async () => {
   const out = await S.POST('/api/positions', [{ id: id.karl, x: 12.5, y: -30 }, { id: id.otto, x: '', y: null }]);
   assert.equal(out.status, 200);

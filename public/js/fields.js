@@ -32,6 +32,14 @@ export const FIELDS = [
     label: 'f.notes', placeholder: 'f.notes_ph',
   },
   {
+    // The record's full name — every given name, in order, as the documents
+    // spell it. `persons.name` stays the short display name the map and the
+    // lists draw; this is where "Maria Theresia Franziska" lives without
+    // widening every label on the chart. Searched and matched like a name.
+    key: 'full_name', scope: 'gemeinsam', type: 'text', section: 'kopf',
+    label: 'f.full_name', placeholder: 'f.full_name_ph', icon: '🪪',
+  },
+  {
     key: 'nickname', scope: 'gemeinsam', type: 'text', section: 'kopf',
     label: 'f.nickname', half: true, icon: '💬',
   },

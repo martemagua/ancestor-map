@@ -276,6 +276,12 @@ button{cursor:pointer; background:none; border:none}
 .fdate.is-text .fd-parts{display:none}
 .fdate .fd-preview{font-size:12.5px; color:var(--ink-3); margin-top:6px; min-height:1em}
 
+/* Two-way mode switch at the top of a form. */
+.seg{display:grid; grid-template-columns:1fr 1fr; gap:0; border:1px solid var(--line);
+  border-radius:11px; overflow:hidden; margin-bottom:14px}
+.seg button{padding:10px 8px; font-size:14px; background:var(--paper); color:var(--ink-3); border:0}
+.seg button.on{background:var(--accent); color:#fff; font-weight:600}
+
 /* "More details" — folded away so the fast path stays fast. */
 details.more{margin-top:18px; border-top:1px solid var(--line); padding-top:6px}
 details.more > summary{

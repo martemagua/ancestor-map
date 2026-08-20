@@ -301,35 +301,7 @@ export function createPerson(body, userId = 0) {
     writeFields(id, body, userId);
     if ('branches' in body) setBranches(id, body.branches);
 
-    const c = body.connect;
-    if (c && c.type) {
-      const other = Number(c.id) || 0;
-      if (c.type === 'partner') {
-        if (!personExists(other)) throw bad('err.person_missing');
-        createUnionRow({ partners: [id, other], kind: c.kind });
-      } else if (c.type === 'child_of_union') {
-        addChild(other, id, c.role);
-      } else if (c.type === 'child_of_person') {
-        if (!personExists(other)) throw bad('err.person_missing');
-        addChild(unionForParent(other), id, c.role);
-      } else if (c.type === 'parent_of') {
-        if (!personExists(other)) throw bad('err.person_missing');
-        // "Add the mother" after the father exists must complete *that*
-        // family, not open a parallel one: a child with exactly one parent
-        // union that still has a free seat gets the new parent as its second
-        // partner. Anything else — no union yet, or both seats taken (a
-        // step-parent) — is honestly a new union.
-        const seats = db.prepare(`SELECT c.union_id, COUNT(up.person_id) partners
-          FROM children c LEFT JOIN union_partners up ON up.union_id = c.union_id
-          WHERE c.child_id=? GROUP BY c.union_id`).all(other);
-        if (seats.length === 1 && seats[0].partners === 1) {
-          addPartner(seats[0].union_id, id);
-        } else {
-          const unionId = createUnionRow({ partners: [id], kind: c.kind }).id;
-          addChild(unionId, other, c.role);
-        }
-      }
-    }
+    if (body.connect && body.connect.type) placeInTree(id, body.connect);
     for (const link of Array.isArray(body.relate) ? body.relate : []) {
       const to = Number(link?.id) || 0;
       if (!to || to === id) continue;
@@ -337,6 +309,89 @@ export function createPerson(body, userId = 0) {
     }
     return { id };
   });
+}
+
+/**
+ * Hang `id` into the tree relative to somebody already in it. One set of
+ * semantics for both doors — a brand-new person (createPerson's `connect`)
+ * and an existing one (`POST /api/persons/:id/connect`) — because "partner
+ * of X" must mean the same thing whether X's partner was typed in today or
+ * three weeks ago.
+ *
+ *   {type:'partner',         id: person, kind}     X's family, or a new union
+ *   {type:'child_of_union',  id: union, role}      into that very union
+ *   {type:'child_of_person', id: person, role}     X's union — theirs if they
+ *                                                  have exactly one, else a
+ *                                                  new one-parent union
+ *   {type:'parent_of',       id: person, kind}     completes X's half-empty
+ *                                                  parent union, else new
+ *
+ * `partner` mirrors `parent_of`'s completion rule: an anchor whose only
+ * union still has its second seat free gets the partner seated *there*, so
+ * the children already hanging off that union become the couple's children.
+ * Always opening a new union is how a grandmother ended up beside her
+ * husband with their daughter dangling from him alone — and no form could
+ * repair it, because every path made yet another union. Both seats taken,
+ * or several unions: a new union is the only honest reading (a remarriage).
+ */
+export function placeInTree(personId, c) {
+  const id = Number(personId);
+  const other = Number(c.id) || 0;
+  if (c.type === 'partner') {
+    if (!personExists(other)) throw bad('err.person_missing');
+    if (id === other) throw bad('err.invalid');
+    // Already partners somewhere: nothing to add, and no duplicate union.
+    const shared = db.prepare(`SELECT a.union_id FROM union_partners a
+      JOIN union_partners b ON b.union_id = a.union_id AND b.person_id=?
+      WHERE a.person_id=?`).get(other, id);
+    if (shared) { if (c.kind) reKind(shared.union_id, c.kind); return; }
+    const theirs = db.prepare(`SELECT up.union_id, COUNT(*) partners FROM union_partners up
+      WHERE up.union_id IN (SELECT union_id FROM union_partners WHERE person_id=?)
+      GROUP BY up.union_id`).all(other);
+    if (theirs.length === 1 && theirs[0].partners === 1) {
+      addPartner(theirs[0].union_id, id);
+      if (c.kind) reKind(theirs[0].union_id, c.kind);
+    } else {
+      createUnionRow({ partners: [id, other], kind: c.kind });
+    }
+  } else if (c.type === 'child_of_union') {
+    addChild(other, id, c.role);
+  } else if (c.type === 'child_of_person') {
+    if (!personExists(other)) throw bad('err.person_missing');
+    addChild(unionForParent(other), id, c.role);
+  } else if (c.type === 'parent_of') {
+    if (!personExists(other)) throw bad('err.person_missing');
+    // "Add the mother" after the father exists must complete *that*
+    // family, not open a parallel one: a child with exactly one parent
+    // union that still has a free seat gets the new parent as its second
+    // partner. Anything else — no union yet, or both seats taken (a
+    // step-parent) — is honestly a new union.
+    const seats = db.prepare(`SELECT c.union_id, COUNT(up.person_id) partners
+      FROM children c LEFT JOIN union_partners up ON up.union_id = c.union_id
+      WHERE c.child_id=? GROUP BY c.union_id`).all(other);
+    if (seats.length === 1 && seats[0].partners === 1) {
+      addPartner(seats[0].union_id, id);
+      if (c.kind) reKind(seats[0].union_id, c.kind);
+    } else {
+      const unionId = createUnionRow({ partners: [id], kind: c.kind }).id;
+      addChild(unionId, other, c.role);
+    }
+  } else {
+    throw bad('err.invalid');
+  }
+}
+
+/** A stated kind beats the placeholder — and only the placeholder. */
+function reKind(unionId, kind) {
+  db.prepare("UPDATE unions SET kind=? WHERE id=? AND kind='unbekannt'")
+    .run(oneOf(kind, UNION_KINDS, 'unbekannt'), Number(unionId));
+}
+
+/** The `POST /api/persons/:id/connect` door: place an existing person. */
+export function connectPerson(personId, body) {
+  if (!personExists(personId)) throw gone();
+  if (!body || !body.type) throw bad('err.invalid');
+  return tx(() => { placeInTree(personId, body); return { ok: true }; });
 }
 
 /**

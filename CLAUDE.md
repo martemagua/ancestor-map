@@ -66,6 +66,15 @@ nodes.
   (union_id, child_id, role)`. Children always hang off a union; a single
   known parent is a one-partner union (GEDCOM-compatible). No parent columns
   on persons — don't add them back.
+- **`placeInTree()` in routes.js is the one set of connect semantics**, used
+  by createPerson's `connect` and by `POST /api/persons/:id/connect` (the
+  quick-add's "Vorhandene verbinden" mode). Its completion rule matters:
+  adding a partner or a parent joins the anchor's *half-empty* union — the
+  children already there become the couple's — and only opens a new union
+  when both seats are taken or several unions exist. Always creating a new
+  union is how a grandmother ended up beside her husband while their
+  daughter dangled from him alone, unrepairable from any form. A stated
+  `kind` replaces only the `'unbekannt'` placeholder, never a real one.
 - `relationships(a_id, b_id, kind, label)` are the free-form described links
   (godmother, exchange family, …), undirected — `pair()` stores the lower id
   in `a_id`. They are deliberately separate from the tree structure.

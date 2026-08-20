@@ -128,13 +128,23 @@ export function personPicker(host, {
       // relative usually hangs next to whoever you just worked on.
       return list.slice()
         .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))
-        .slice(0, 6);
+        .slice(0, 8);
     }
+    // Names beyond the display one count too — a grandmother recorded under
+    // her maiden name is still found by it.
+    const hay = p => [p.name, p.birth_name, p.nickname, p.full_name]
+      .filter(Boolean).map(norm);
     return list
-      .map(p => ({ p, score: norm(p.name).startsWith(q) ? 2 : norm(p.name).includes(q) ? 1 : 0 }))
+      .map(p => {
+        const names = hay(p);
+        const score = names.some(n => n.startsWith(q)) ? 3
+          : names.some(n => n.split(/\s+/).some(w => w.startsWith(q))) ? 2
+            : names.some(n => n.includes(q)) ? 1 : 0;
+        return { p, score };
+      })
       .filter(x => x.score)
       .sort((a, b) => b.score - a.score || a.p.name.localeCompare(b.p.name, getLang()))
-      .slice(0, 6)
+      .slice(0, 12)
       .map(x => x.p);
   };
 
@@ -164,7 +174,9 @@ export function personPicker(host, {
         ${avatarHtml(p, 'sm')}<span><b>${escapeHtml(p.name)}</b><span class="sub">${
           escapeHtml(lifespan(p) || kinLabel(p.id))}</span></span></button>`).join('');
       list.querySelectorAll('[data-pick]').forEach(b => {
-        b.onclick = () => { host.dataset.value = b.dataset.pick; draw(); notify(); };
+        // pointerdown beats the blur a tap causes — same fix as the place
+        // picker, and the reason a hit can be chosen on the first tap.
+        b.onpointerdown = e => { e.preventDefault(); host.dataset.value = b.dataset.pick; draw(); notify(); };
       });
     };
     input.oninput = show;
@@ -342,7 +354,13 @@ export function openPerson(id) {
     const kids = unionChildren(uid).map(x => S.personById[x]).filter(Boolean);
     return { u, partners, kids };
   });
-  const parents = parentsOfP(id).map(x => S.personById[x]).filter(Boolean);
+  // Parents come per union, not as one flat list: the ✎ besides them opens
+  // that union, which is where a missing second parent or a missing sibling
+  // is fixed — the repair a flat list quietly made unreachable.
+  const parentUnions = (S.parentUnionsOf[id] || []).map(uid => ({
+    u: S.unionById[uid],
+    parents: unionPartners(uid).map(x => S.personById[x]).filter(Boolean),
+  })).filter(x => x.u);
   const siblings = siblingsOfP(id).map(x => S.personById[x]).filter(Boolean);
   const rels = relsOf(id);
   const branches = branchesWithParents(p).map(bid => S.branchById[bid]).filter(Boolean);
@@ -387,7 +405,11 @@ export function openPerson(id) {
 
     <div class="card">
       <h3>${escapeHtml(t('card.family'))}</h3>
-      ${parents.length ? `<div class="lbl">${escapeHtml(t('card.parents'))}</div>${parents.map(o => personRow(o)).join('')}` : ''}
+      ${parentUnions.map(({ u, parents }) => `
+        <div class="lbl">${escapeHtml(t('card.parents'))}
+          ${canEdit() ? `<button class="reledit" data-union="${u.id}" title="${escapeHtml(t('ui.edit'))}" style="float:right">✎</button>` : ''}
+        </div>
+        ${parents.map(o => personRow(o)).join('')}`).join('')}
       ${unions.map(({ u, partners, kids }) => `
         <div class="lbl" style="margin-top:10px">${escapeHtml(t('union.' + (u?.kind || 'unbekannt')))}${
           u?.started || u?.ended ? ` · ${escapeHtml([formatFuzzy(u.started), formatFuzzy(u.ended)].filter(Boolean).join('–'))}` : ''}
@@ -397,7 +419,7 @@ export function openPerson(id) {
         ${kids.length ? `<div class="lbl" style="margin-top:6px">${escapeHtml(t('card.children'))}</div>${kids.map(o => personRow(o)).join('')}` : ''}
       `).join('')}
       ${siblings.length ? `<div class="lbl" style="margin-top:10px">${escapeHtml(t('card.siblings'))}</div>${siblings.map(o => personRow(o)).join('')}` : ''}
-      ${!parents.length && !unions.length && !siblings.length ? `<p class="muted">${escapeHtml(t('card.no_family'))}</p>` : ''}
+      ${!parentUnions.length && !unions.length && !siblings.length ? `<p class="muted">${escapeHtml(t('card.no_family'))}</p>` : ''}
       ${canEdit() ? `<button class="btn sm" data-addrel style="margin-top:10px">+ ${escapeHtml(t('card.add_relative'))}</button>` : ''}
     </div>
 
@@ -598,19 +620,15 @@ export function openPersonForm(id) {
  * Add a person the way you think: who are they, and where do they hang in
  * the tree. One request — the connection travels with the person.
  */
-export function openQuickAdd({ relativeOf = null } = {}) {
-  const anchor = relativeOf ?? S.probandId;
-  const body = `
-    <label class="field"><span>${escapeHtml(t('ui.name'))}</span>
-      <input data-f="name" placeholder="${escapeHtml(t('form.name_ph'))}" autocomplete="off"></label>
-    <label class="field"><span>${escapeHtml(t('p.sex'))}</span>
-      <select data-f="sex"><option value="">–</option>
-        <option value="f">${escapeHtml(t('sex.f'))}</option>
-        <option value="m">${escapeHtml(t('sex.m'))}</option></select></label>
-
-    ${lifeEventHtml('birth', null)}
-    ${lifeEventHtml('death', null)}
-
+/**
+ * The relation block both quick-add modes share: what they are to the
+ * anchor, to whom — and what the relation itself is like. Picking "Partner"
+ * asks which kind of partnership; picking "Kind" asks how they arrived.
+ * Those lived only in the union form before, which meant every marriage was
+ * created as "unbekannt" and corrected afterwards, if anyone found the form.
+ */
+function relationBlockHtml() {
+  return `
     <div class="lbl" style="margin-top:20px">${escapeHtml(t('add.how'))}</div>
     <div class="linkrow">
       <select data-f="how">
@@ -621,6 +639,63 @@ export function openQuickAdd({ relativeOf = null } = {}) {
       </select>
       <div class="ppick" data-anchor></div>
     </div>
+    <label class="field" data-how-kind><span>${escapeHtml(t('union.kind'))}</span>
+      <select data-f="union_kind">${UNION_KINDS.map(k =>
+    `<option value="${k}">${escapeHtml(t('union.' + k))}</option>`).join('')}</select></label>
+    <label class="field" data-how-role hidden><span>${escapeHtml(t('add.child_role'))}</span>
+      <select data-f="child_role">${CHILD_ROLES.map(r =>
+    `<option value="${r}">${escapeHtml(t('role.' + r))}</option>`).join('')}</select></label>`;
+}
+
+/** Show the controls the chosen relation actually needs, hide the rest. */
+function wireRelationBlock(root) {
+  const how = root.querySelector('[data-f="how"]');
+  const sync = () => {
+    root.querySelector('[data-how-kind]').hidden = !['partner', 'parent_of'].includes(how.value);
+    root.querySelector('[data-how-role]').hidden = !how.value.startsWith('child');
+  };
+  how.addEventListener('change', sync);
+  sync();
+}
+
+/** The connect payload the relation block currently describes, or null. */
+function readRelationBlock(root, picker) {
+  const how = val(root, 'how');
+  if (!how || !picker.value) return null;
+  return {
+    type: how, id: picker.value,
+    ...(['partner', 'parent_of'].includes(how) ? { kind: val(root, 'union_kind') } : {}),
+    ...(how.startsWith('child') ? { role: val(root, 'child_role') } : {}),
+  };
+}
+
+export function openQuickAdd({ relativeOf = null } = {}) {
+  const anchor = relativeOf ?? S.probandId;
+  const body = `
+    <div class="seg" data-mode role="tablist">
+      <button class="on" data-seg="new">${escapeHtml(t('add.mode_new'))}</button>
+      <button data-seg="link">${escapeHtml(t('add.mode_link'))}</button>
+    </div>
+
+    <div data-pane="new">
+    <label class="field"><span>${escapeHtml(t('ui.name'))}</span>
+      <input data-f="name" placeholder="${escapeHtml(t('form.name_ph'))}" autocomplete="off"></label>
+    <label class="field"><span>${escapeHtml(t('p.sex'))}</span>
+      <select data-f="sex"><option value="">–</option>
+        <option value="f">${escapeHtml(t('sex.f'))}</option>
+        <option value="m">${escapeHtml(t('sex.m'))}</option></select></label>
+
+    ${lifeEventHtml('birth', null)}
+    ${lifeEventHtml('death', null)}
+    </div>
+
+    <div data-pane="link" hidden>
+      <div class="lbl">${escapeHtml(t('add.link_who'))}</div>
+      <div class="ppick" data-linkperson></div>
+      <p class="muted" style="margin-top:8px">${escapeHtml(t('add.link_hint'))}</p>
+    </div>
+
+    ${relationBlockHtml()}
 
     <details class="more" data-more-fields>
       <summary>${escapeHtml(t('add.more'))}</summary>
@@ -644,6 +719,34 @@ export function openQuickAdd({ relativeOf = null } = {}) {
     onMount(root) {
       mountFuzzyDates(root);
       const picker = personPicker(root.querySelector('[data-anchor]'), { selected: anchor });
+      const linkPicker = personPicker(root.querySelector('[data-linkperson]'), {
+        placeholder: t('add.link_ph'),
+      });
+      wireRelationBlock(root);
+
+      // The two modes: type somebody in, or place somebody already typed in.
+      let mode = 'new';
+      const segs = root.querySelectorAll('[data-mode] [data-seg]');
+      segs.forEach(btn => {
+        btn.onclick = () => {
+          mode = btn.dataset.seg;
+          segs.forEach(b => b.classList.toggle('on', b === btn));
+          root.querySelector('[data-pane="new"]').hidden = mode !== 'new';
+          root.querySelector('[data-pane="link"]').hidden = mode !== 'link';
+          // "Not related" creates a loose person; a *link* with no relation
+          // would do nothing at all, so the option leaves with the mode.
+          const none = root.querySelector('[data-f="how"] option[value=""]');
+          none.hidden = mode === 'link';
+          if (mode === 'link' && !val(root, 'how')) {
+            root.querySelector('[data-f="how"]').value = 'partner';
+            root.querySelector('[data-f="how"]').dispatchEvent(new Event('change'));
+          }
+          root.querySelector('[data-more-fields]').hidden = mode === 'link';
+          root.querySelector('[data-more]').hidden = mode === 'link';
+          root.querySelector('[data-save]').textContent = t(mode === 'link' ? 'add.link_go' : 'add.create');
+        };
+      });
+
       const coords = { birth: { lat: null, lon: null }, death: { lat: null, lon: null } };
       import('./geo.js').then(geo => {
         for (const which of ['birth', 'death']) {
@@ -655,9 +758,20 @@ export function openQuickAdd({ relativeOf = null } = {}) {
       root.querySelector('[data-f="name"]').focus();
 
       const save = async () => {
+        const connect = readRelationBlock(root, picker);
+        if (mode === 'link') {
+          const who = linkPicker.value;
+          if (!who) { toast(t('add.link_missing')); return null; }
+          if (!connect) { toast(t('add.link_missing')); return null; }
+          if (who === connect.id) { toast(t('add.link_self')); return null; }
+          try {
+            await api.post(`/api/persons/${who}/connect`, connect);
+            await refresh();
+            return who;
+          } catch (err) { toast(err.message); return null; }
+        }
         const name = val(root, 'name').trim();
         if (!name) { toast(t('form.name_missing')); return null; }
-        const how = val(root, 'how');
         const payload = {
           name,
           sex: val(root, 'sex'),
@@ -669,7 +783,7 @@ export function openQuickAdd({ relativeOf = null } = {}) {
           death_lat: coords.death.lat, death_lon: coords.death.lon,
           ...(root.querySelector('[data-branches]') ? { branches: checked(root, '[data-branches] input') } : {}),
           ...readFields(root),
-          ...(how && picker.value ? { connect: { type: how, id: picker.value } } : {}),
+          ...(connect ? { connect } : {}),
         };
         try {
           const out = await api.post('/api/persons', payload);
