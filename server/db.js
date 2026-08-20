@@ -10,7 +10,23 @@ import { DatabaseSync } from 'node:sqlite';
 
 export const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 export const BACKUP_DIR = path.join(DATA_DIR, 'backups');
-fs.mkdirSync(BACKUP_DIR, { recursive: true });
+
+// The single most common self-hosting failure is a data directory the
+// container user cannot write — say so in one plain sentence instead of a
+// stack trace, because this is the first line anyone sees in the app logs.
+try {
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  fs.accessSync(DATA_DIR, fs.constants.W_OK);
+} catch {
+  const who = `uid ${process.getuid?.() ?? '?'} / gid ${process.getgid?.() ?? '?'}`;
+  console.error(
+    `The data directory ${DATA_DIR} is not writable by the container user (${who}).\n`
+    + `Fix the ownership of the host folder mounted there, e.g. on TrueNAS:\n`
+    + `  sudo chown -R ${process.getuid?.() ?? 568}:${process.getgid?.() ?? 568} /path/to/your/dataset\n`
+    + `then restart the app.`,
+  );
+  process.exit(1);
+}
 
 export const db = new DatabaseSync(path.join(DATA_DIR, 'ancestormap.db'));
 db.exec('PRAGMA journal_mode = WAL;');
