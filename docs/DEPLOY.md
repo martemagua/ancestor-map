@@ -44,16 +44,35 @@ packages start *private* even on a public repository. Once, do either:
    that fails the deploy if it is skipped, because the container runs as an
    unprivileged user and a fresh dataset belongs to root.
 
-   Datasets → the new dataset → *Permissions* → **Edit** (ACL editor):
-   - **Owner**: `apps` · **Owner Group**: your app-data group (`apps-data`)
-   - Tick *Apply Owner* and *Apply Group*
-   - Entries: `owner@` → Full Control, `group@` → Modify
-   - Tick **Apply permissions recursively** → *Save Access Control List*
+   The shortest reliable way is the shell, because it names the ids
+   numerically and cannot be misread:
 
-   Whatever user and group you land on must match the `user:` line in the
-   compose file — `568:3000` in the examples means uid `apps`, gid
-   `apps-data`. If the app cannot write, it now says so in its log in one
-   sentence, naming the uid/gid it is running as.
+   ```bash
+   sudo chown -R 568:3000 /mnt/POOL/ancestormap-test
+   sudo chmod -R 770 /mnt/POOL/ancestormap-test
+   ```
+
+   Those two numbers must be the same pair as the `user:` line in the
+   compose file — `568` is TrueNAS's `apps` user, `3000` here is an
+   `apps-data` group. Check yours with `id apps` and `getent group
+   apps-data`.
+
+   Through the UI instead: Datasets → the dataset → *Permissions* → **Edit**.
+   TrueNAS shows one of two editors depending on how the dataset was
+   created, and they look nothing alike:
+
+   - **POSIX** — rows called *User Obj*, *Group Obj*, *Other*. Set Owner
+     `apps`, Owner Group `apps-data`, tick *Apply Owner* and *Apply Group*,
+     give **User Obj** and **Group Obj** all of Read/Write/Execute, then
+     *Save Access Control List*.
+   - **NFSv4** — rows called `owner@`, `group@`, `builtin_users`. Give
+     `owner@` Full Control and `group@` Modify, same Apply Owner/Group
+     ticks, then save.
+
+   Either way the change only takes effect when you press **Save Access
+   Control List** — the tick boxes alone do nothing. If the app still
+   cannot write, its log now says so in one sentence, naming the uid/gid it
+   is actually running as.
 2. **App**: Apps → *Discover Apps* → top-right ⋮ → **Install via YAML** →
    name it `ancestormap-test` → paste `docker-compose.truenas-test.yml` →
    fix the `volumes:` line to your pool's real path → Save.
