@@ -4,6 +4,11 @@
 services:
   ancestormap:
     image: ghcr.io/martemagua/ancestor-map:latest
+    # Restarting the app fetches the newest `latest` — which only moves when
+    # a pull request is merged into main, so it never surprises you. Pin a
+    # released version instead (e.g. :v0.1.0) if you want a restart to be
+    # guaranteed to change nothing at all.
+    pull_policy: always
     container_name: ancestormap
     user: "568:568"
     ports:

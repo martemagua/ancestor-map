@@ -86,10 +86,44 @@ published `:latest`.
 
 ## Updating
 
-- **Test**: Apps → `ancestormap-test` → *Update* (or stop/start) — it
-  re-pulls `:dev`.
-- **Stable**: same, after a merge to `main`. Static files are served
-  `no-cache`, so every browser runs the new version on its next load.
+**TrueNAS greys out the *Update* button for apps installed via YAML.** It
+only lights up when an app's *definition* changes, and `:dev` is the same
+string today as yesterday even though it points at a new image. So the
+update is a restart, and `pull_policy: always` in the compose files is what
+makes that restart fetch anything:
+
+> Apps → the app → **Stop**, then **Start**.
+
+Check what you got — the running build is at the bottom of the settings
+sheet in the app, and `/healthz` answers with it:
+
+```
+curl -s http://NAS-IP:4323/healthz
+{"ok":true,"uptime":3,"version":"0.1.0","commit":"73a025c",...}
+```
+
+That `commit` is the short SHA of the commit the image was built from, so it
+tells you exactly which version is running.
+
+If a restart ever seems not to update, pull by hand and start again:
+
+```bash
+sudo docker pull ghcr.io/martemagua/ancestor-map:dev
+```
+
+Browsers need nothing: static files are served `no-cache` with an ETag, so
+every open tab runs the new version on its next load.
+
+**Wait for the build.** Pushing to `dev` starts a container build that takes
+a couple of minutes; restarting the app before it finishes just re-pulls the
+previous image. The repo's *Actions* tab shows when it is done.
+
+### Pinning an exact version
+
+Every build is also tagged with its commit (`sha-73a025c`) and every release
+tag (`v0.1.0`) becomes an image tag. Putting one of those in `image:`
+instead of `:dev` / `:latest` makes the instance immovable until you edit
+the YAML — which is what you want if a restart must never change anything.
 
 ## HTTPS
 
