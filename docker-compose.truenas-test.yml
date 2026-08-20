@@ -1,0 +1,21 @@
+# The TEST instance for TrueNAS SCALE (Apps → Discover Apps → ⋮ → Install via
+# YAML). Tracks the `dev` branch: every push to dev builds a fresh image, and
+# an app restart (or watchtower-style updater) picks it up.
+#
+# Uses its own dataset and its own port, so it can never touch the stable
+# family data. Seed it with fictional people rather than a copy of the real
+# tree when you only want to try a feature.
+services:
+  ancestormap-test:
+    image: ghcr.io/martemagua/ancestor-map:dev
+    container_name: ancestormap-test
+    user: "568:568"
+    ports:
+      - "4323:4322"
+    environment:
+      TZ: Europe/Berlin
+      DATA_DIR: /data
+      BACKUP_KEEP: "10"
+    volumes:
+      - /mnt/YOUR-POOL/apps/ancestormap-test:/data
+    restart: unless-stopped

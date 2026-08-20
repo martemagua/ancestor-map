@@ -84,6 +84,10 @@ To try it with the fictional demo family first:
 npm run seed && npm run dev
 ```
 
+Running it on TrueNAS SCALE — including the test-instance / stable-instance
+setup and the `dev` → `main` release flow — is walked through in
+[docs/DEPLOY.md](docs/DEPLOY.md).
+
 ### Deployment notes
 
 - All state lives in one SQLite file under `DATA_DIR` (default `/data` in

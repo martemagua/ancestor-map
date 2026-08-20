@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [main, master, 'claude/**']
+    branches: [main, master, dev, 'claude/**']
   pull_request:
   workflow_dispatch:
 

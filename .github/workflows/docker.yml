@@ -2,9 +2,10 @@ name: Build container image
 
 on:
   push:
+    # dev feeds the test instance (:dev), main the stable one (:latest).
     # Feature branches get their own tag too, so a build can be deployed and
     # tried before anything is merged.
-    branches: [main, master, 'claude/**']
+    branches: [main, master, dev, 'claude/**']
     tags: ['v*']
   workflow_dispatch:
 
