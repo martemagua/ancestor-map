@@ -1,0 +1,17 @@
+# The STABLE instance for TrueNAS SCALE (Apps → Discover Apps → ⋮ → Install
+# via YAML). Tracks `latest`, which is only built from the main branch — so
+# it moves exactly when a dev→main pull request merges, never in between.
+services:
+  ancestormap:
+    image: ghcr.io/martemagua/ancestor-map:latest
+    container_name: ancestormap
+    user: "568:568"
+    ports:
+      - "4322:4322"
+    environment:
+      TZ: Europe/Berlin
+      DATA_DIR: /data
+      BACKUP_KEEP: "30"
+    volumes:
+      - /mnt/YOUR-POOL/apps/ancestormap:/data
+    restart: unless-stopped

@@ -1,0 +1,504 @@
+/* Ancestor Map — mobile-first. Token system ported from Friend-Map: every
+   colour is defined on bare :root, then overridden in the dark media query
+   *and* [data-theme="dark"], so auto/light/dark all work. The canvas reads
+   these tokens with getComputedStyle — never hardcode a hex in JS that also
+   exists here. */
+:root{
+  --paper:#F4F2ED; --card:#FCFBF8; --sunk:#EAE7DE; --ink:#232320; --ink-2:#5E5B52; --ink-3:#8B8779;
+  --line:#DCD8CC; --line-2:#C7C2B3;
+  --accent:#2F6FAE; --love:#C13D51; --warn:#C57D22; --good:#4A9260;
+  --family:#A6743C;
+  --ungrouped:#9A968C;
+  --shadow-1:0 1px 2px rgba(35,35,32,.06);
+  --shadow-2:0 -2px 24px rgba(35,35,32,.14);
+  --safe-t:env(safe-area-inset-top,0px);
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --tabbar:calc(56px + var(--safe-b));
+  --display:"Helvetica Neue",Helvetica,Arial,sans-serif;
+  --body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --tile-filter:none;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#15150F; --card:#1E1D16; --sunk:#100F0A; --ink:#EEEBE1; --ink-2:#A19D8E; --ink-3:#78745F;
+    --line:#33322A; --line-2:#454338;
+    --accent:#74ACE2; --love:#E8697B; --warn:#DFA24A; --good:#6CC084;
+    --family:#C99A62;
+    --ungrouped:#7C786C;
+    --shadow-1:0 1px 2px rgba(0,0,0,.5);
+    --shadow-2:0 -2px 28px rgba(0,0,0,.7);
+    --tile-filter:brightness(.72) saturate(.85);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#15150F; --card:#1E1D16; --sunk:#100F0A; --ink:#EEEBE1; --ink-2:#A19D8E; --ink-3:#78745F;
+  --line:#33322A; --line-2:#454338;
+  --accent:#74ACE2; --love:#E8697B; --warn:#DFA24A; --good:#6CC084;
+  --family:#C99A62;
+  --ungrouped:#7C786C;
+  --shadow-1:0 1px 2px rgba(0,0,0,.5);
+  --shadow-2:0 -2px 28px rgba(0,0,0,.7);
+  --tile-filter:brightness(.72) saturate(.85);
+}
+
+*{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  font-family:var(--body); background:var(--paper); color:var(--ink);
+  font-size:16px; line-height:1.5; height:100dvh; overflow:hidden; overscroll-behavior:none;
+  -webkit-font-smoothing:antialiased;
+  /* Belt to the viewport's braces: pan-x pan-y allows scrolling and nothing
+     else; the two canvases keep their own touch-action:none. */
+  touch-action:pan-x pan-y;
+}
+button,input,textarea,select{font-family:inherit; font-size:16px; color:inherit}
+button{cursor:pointer; background:none; border:none}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:8px}
+.hidden{display:none !important}
+/* `hidden` is a browser default of display:none, which any layout rule of
+   ours beats — a hidden flex row stays on screen. Say it once, loudly. */
+[hidden]{display:none !important}
+
+/* ---------------------------------------------------------------- shell */
+#app{height:100dvh; display:flex; flex-direction:column}
+#views{flex:1; position:relative; overflow:hidden}
+.view{position:absolute; inset:0; display:flex; flex-direction:column; overflow:hidden}
+.view[hidden]{display:none}
+.scroll{flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:0 16px calc(24px + var(--tabbar))}
+
+.topbar{
+  display:flex; align-items:center; gap:10px; padding:calc(10px + var(--safe-t)) 16px 10px;
+  background:var(--paper); border-bottom:1px solid var(--line); position:relative; z-index:5;
+}
+.topbar h1{font-family:var(--display); font-size:20px; font-weight:800; letter-spacing:-.02em; flex:1}
+.topbar .sub{font-size:12px; color:var(--ink-3); font-weight:400; letter-spacing:0}
+
+/* ---------------------------------------------------------------- tab bar */
+#tabbar{
+  display:grid; grid-template-columns:repeat(4,1fr); background:var(--card);
+  border-top:1px solid var(--line); padding-bottom:var(--safe-b); position:relative; z-index:20;
+}
+#tabbar button{
+  padding:8px 0 9px; display:flex; flex-direction:column; align-items:center; gap:2px;
+  font-size:10px; letter-spacing:.03em; color:var(--ink-3);
+}
+#tabbar button .ico{font-size:20px; line-height:1.1; filter:grayscale(1); opacity:.65}
+#tabbar button.on{color:var(--accent)}
+#tabbar button.on .ico{filter:none; opacity:1}
+
+/* ---------------------------------------------------------------- tree map */
+#map-wrap{flex:1; position:relative; background:var(--sunk); touch-action:none; overflow:hidden}
+#map{display:block; width:100%; height:100%; touch-action:none}
+/* One slim row by default, however many branches there are — the strip is a
+   legend, not the content. The chevron folds it open and away again. */
+.chipbar{
+  display:flex; align-items:flex-start; gap:6px; padding:8px 10px 8px 16px;
+  background:var(--paper); border-bottom:1px solid var(--line);
+}
+.chipstrip{
+  display:flex; flex:1; min-width:0; gap:6px; overflow-x:auto; scrollbar-width:none;
+}
+.chipstrip::-webkit-scrollbar{display:none}
+.chipbar.open .chipstrip{flex-wrap:wrap; overflow:visible}
+#chips-expand{
+  flex:none; width:30px; height:29px; border-radius:99px; border:1px solid var(--line-2);
+  background:var(--card); color:var(--ink-3); font-size:12px; line-height:1;
+  display:grid; place-items:center; transition:transform .18s ease;
+}
+.chipbar.open #chips-expand{transform:rotate(180deg)}
+/* Three states, one tap target: shown, highlighted, off. */
+.chip{
+  flex:none; display:inline-flex; align-items:center; gap:5px; padding:5px 11px; border-radius:99px;
+  border:1px solid var(--line-2); font-size:13px; color:var(--ink); white-space:nowrap;
+  transition:opacity .15s ease, background .15s ease, border-color .15s ease;
+}
+.chip.on{opacity:1}
+.chip.lit{
+  border-color:var(--c); background:color-mix(in srgb, var(--c) 20%, transparent); font-weight:600;
+  box-shadow:inset 0 0 0 1px var(--c);
+}
+.chip.off{opacity:.4; color:var(--ink-2); text-decoration:line-through; text-decoration-thickness:1px}
+.chip .dot{width:8px; height:8px; border-radius:50%; flex:none}
+.chip.sub{font-size:12px; padding:4px 9px}
+.chip.fold{margin-left:-4px; padding:5px 8px; font-size:11px; color:var(--ink-2); gap:3px}
+.segmented{display:flex; gap:3px; background:var(--sunk); border-radius:10px; padding:3px}
+.segmented button{
+  flex:1; padding:6px 10px; border-radius:8px; font-size:13px; color:var(--ink-2); white-space:nowrap;
+}
+.segmented button.on{background:var(--card); color:var(--ink); box-shadow:var(--shadow-1); font-weight:600}
+
+.fab{
+  position:absolute; right:16px; bottom:16px; width:56px; height:56px; border-radius:50%;
+  background:var(--ink); color:var(--paper); font-size:30px; line-height:1; display:grid; place-items:center;
+  box-shadow:0 6px 20px rgba(0,0,0,.28); z-index:10;
+}
+.maptools{position:absolute; left:16px; bottom:16px; display:flex; flex-direction:column; gap:8px; z-index:10}
+.maptools button{
+  width:42px; height:42px; border-radius:12px; background:var(--card); border:1px solid var(--line);
+  font-size:17px; display:grid; place-items:center; box-shadow:var(--shadow-1);
+}
+.maptools button.on{background:var(--accent); color:#fff; border-color:var(--accent)}
+.maphint{
+  position:absolute; left:50%; top:12px; transform:translateX(-50%); pointer-events:none;
+  font-size:12px; color:var(--ink-3); background:var(--card); border:1px solid var(--line);
+  padding:5px 12px; border-radius:99px; white-space:nowrap; text-align:center;
+  animation:hintfade 9s ease forwards;
+}
+@keyframes hintfade{ 0%,70%{opacity:1} 100%{opacity:0} }
+@media (prefers-reduced-motion:reduce){ .maphint{animation:none; opacity:.7} }
+
+/* ---------------------------------------------------------------- lists */
+.searchbar{padding:8px 16px; background:var(--paper); border-bottom:1px solid var(--line)}
+.searchbar input{
+  width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--line);
+  background:var(--card); color:var(--ink);
+}
+.grouphead{
+  display:flex; align-items:center; gap:7px; font-family:var(--mono); font-size:11px;
+  letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3); padding:20px 0 8px;
+}
+.grouphead .dot{width:9px; height:9px; border-radius:50%}
+.grouphead .n{margin-left:auto; letter-spacing:0}
+
+.prow{
+  display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+  padding:9px 0; border-bottom:1px solid var(--line);
+}
+.prow:last-child{border-bottom:none}
+.prow .meta{flex:1; min-width:0}
+.prow .nm{font-size:16px; font-weight:550; display:flex; align-items:center; gap:6px}
+.prow .sec{font-size:12.5px; color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.prow .stale{font-family:var(--mono); font-size:11px; color:var(--ink-3); flex:none}
+
+/* Sorting, grouping and the filters worth one tap — one line that scrolls
+   sideways rather than a second row stealing height from the list. */
+.listctl{
+  display:flex; gap:7px; align-items:center; padding:0 14px 10px;
+  overflow-x:auto; scrollbar-width:none;
+}
+.listctl::-webkit-scrollbar{display:none}
+.listctl .btn.sm, .listctl .chip.sm{flex:none}
+.listctl .chip.sm{padding:5px 10px; font-size:12.5px; color:var(--ink-2)}
+.listctl .chip.sm.on{background:var(--ink); border-color:var(--ink); color:var(--paper); font-weight:600}
+
+.avatar{
+  width:42px; height:42px; border-radius:13px; flex:none; display:grid; place-items:center;
+  font-family:var(--display); font-weight:800; font-size:15px; color:#fff; overflow:hidden;
+  background:var(--ungrouped); text-shadow:0 1px 2px rgba(0,0,0,.25); position:relative;
+}
+.avatar.lg{width:64px; height:64px; border-radius:19px; font-size:22px}
+.avatar.sm{width:30px; height:30px; border-radius:10px; font-size:12px}
+
+.empty{
+  text-align:center; color:var(--ink-3); padding:48px 24px; font-size:14.5px;
+  display:flex; flex-direction:column; gap:10px; align-items:center;
+}
+.empty .big{font-size:34px}
+
+/* ---------------------------------------------------------------- cards */
+.card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; box-shadow:var(--shadow-1)}
+.card + .card{margin-top:12px}
+.card h3{font-family:var(--display); font-size:15px; font-weight:800; letter-spacing:-.01em; margin-bottom:8px}
+.lbl{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.13em; text-transform:uppercase;
+  color:var(--ink-3); margin-bottom:5px;
+}
+.muted{color:var(--ink-3); font-size:13.5px}
+.stack{display:flex; flex-direction:column; gap:12px}
+.rowline{display:flex; align-items:center; gap:10px}
+.spread{display:flex; align-items:center; justify-content:space-between; gap:10px}
+
+.tag{
+  display:inline-flex; align-items:center; gap:5px; font-size:12px; padding:3px 9px;
+  border-radius:99px; border:1px solid var(--line-2); color:var(--ink-2);
+}
+.tag .dot{width:7px; height:7px; border-radius:50%}
+/* A keyword another account gave them, next to yours rather than among them. */
+.tag.theirs{border-style:dashed; color:var(--ink-3)}
+.taglist{display:flex; flex-wrap:wrap; gap:6px}
+
+/* ---------------------------------------------------------------- buttons */
+.btn{
+  padding:11px 14px; border-radius:11px; border:1px solid var(--line-2); background:var(--card);
+  font-size:15px; text-align:center; display:inline-flex; align-items:center; justify-content:center; gap:7px;
+}
+.btn:active{transform:scale(.985)}
+.btn.primary{background:var(--ink); color:var(--paper); border-color:var(--ink); font-weight:600}
+.btn.ghost{border-color:transparent; background:var(--sunk)}
+.btn.danger{color:var(--love); border-color:var(--love)}
+.btn.wide{width:100%}
+.btn.sm{padding:7px 11px; font-size:13.5px; border-radius:9px}
+.btnrow{display:flex; gap:8px}
+.btnrow > *{flex:1}
+
+/* Two views of the same thing, one of which is always on — a switch. */
+.seg{display:inline-flex; border:1px solid var(--line-2); border-radius:9px; overflow:hidden; flex:none}
+.seg button{padding:6px 10px; font-size:12.5px; color:var(--ink-2); background:var(--card); white-space:nowrap}
+.seg button + button{border-left:1px solid var(--line-2)}
+.seg button.on{background:var(--ink); color:var(--paper); font-weight:600}
+
+/* ---------------------------------------------------------------- forms */
+.field{display:block; margin-top:12px; position:relative}
+.field > span{display:block; font-size:12.5px; color:var(--ink-3); margin-bottom:4px}
+.field input,.field textarea,.field select{
+  width:100%; padding:11px 12px; border-radius:11px; border:1px solid var(--line);
+  background:var(--paper); color:var(--ink);
+}
+.field textarea{min-height:80px; resize:vertical}
+.field input:focus,.field textarea:focus,.field select:focus{outline:none; border-color:var(--accent)}
+.two{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+/* Grid children default to min-width:auto — without this the columns overflow. */
+.two > *{min-width:0}
+.check{display:flex; align-items:center; gap:10px; padding:7px 0; font-size:14.5px}
+.check input{width:20px; height:20px; flex:none; accent-color:var(--accent)}
+.checkscroll{max-height:200px; overflow-y:auto; border:1px solid var(--line); border-radius:11px; padding:6px 10px}
+
+/* ---------------------------------------------------------------- sheets */
+#scrim{
+  position:fixed; inset:0; background:rgba(0,0,0,.42); z-index:40; opacity:0; pointer-events:none;
+  transition:opacity .22s ease;
+}
+#scrim.show{opacity:1; pointer-events:auto}
+.sheet{
+  position:fixed; left:0; right:0; bottom:0; z-index:50; background:var(--card);
+  border-radius:22px 22px 0 0; border-top:1px solid var(--line); box-shadow:var(--shadow-2);
+  max-height:92dvh; display:flex; flex-direction:column;
+  transform:translateY(100%); transition:transform .26s cubic-bezier(.2,.8,.25,1);
+}
+.sheet.show{transform:translateY(0)}
+.sheet .grip{width:40px; height:4px; border-radius:99px; background:var(--line-2); margin:9px auto 4px; flex:none}
+.sheet .sheethead{
+  display:flex; align-items:flex-start; gap:12px; padding:8px 18px 12px; border-bottom:1px solid var(--line); flex:none;
+}
+.sheet .sheethead h2{font-family:var(--display); font-size:21px; font-weight:800; letter-spacing:-.02em; flex:1; min-width:0}
+.sheet .sheethead .close{font-size:26px; color:var(--ink-3); width:34px; height:34px; line-height:1; flex:none}
+.sheet .sheetbody{overflow-y:auto; padding:14px 18px calc(20px + var(--safe-b)); -webkit-overflow-scrolling:touch}
+@media (min-width:760px){
+  .sheet{left:auto; right:0; top:0; bottom:0; width:440px; max-height:100dvh; border-radius:0;
+    border-left:1px solid var(--line); transform:translateX(100%)}
+  .sheet.show{transform:translateX(0)}
+  .sheet .grip{display:none}
+  .sheet .sheethead{padding-top:calc(16px + var(--safe-t))}
+}
+
+/* ---------------------------------------------------------------- person sheet */
+.phead{display:flex; gap:13px; align-items:center}
+.phead .who{flex:1; min-width:0}
+.phead .who .side{font-family:var(--mono); font-size:11px; letter-spacing:.08em; color:var(--ink-3); text-transform:uppercase}
+/* Pinning is a personal shortcut: one tap, saved immediately. */
+.pinbtn{
+  flex:none; width:40px; height:40px; border-radius:12px; font-size:19px; line-height:1;
+  border:1px solid var(--line-2); background:var(--card); color:var(--line-2);
+}
+.pinbtn.on{color:var(--accent); border-color:var(--accent)}
+.pinbtn:active{transform:scale(.94)}
+/* What another account wrote, under what you see. A quoted line, not a
+   second column: on a phone there is no second column. */
+.alsosaid{
+  display:flex; gap:7px; align-items:baseline;
+  margin-top:5px; padding-left:9px; border-left:2px solid var(--line-2);
+  font-size:13px; color:var(--ink-3);
+}
+.alsosaid:first-of-type{margin-top:0}
+.alsosaid .who{flex:0 0 auto; font-size:11px; opacity:.65; cursor:default}
+.rowline .who{font-size:11px; opacity:.6; cursor:default}
+/* On the form: this one is the documented record, not just your note. */
+.shareflag{
+  margin-left:7px; padding:1px 6px; border-radius:6px; background:var(--sunk);
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3);
+}
+
+.relrow{display:flex; align-items:center; gap:4px; border-bottom:1px solid var(--line); width:100%}
+.relrow:last-child{border-bottom:none}
+.relmain{display:flex; align-items:center; gap:10px; flex:1; min-width:0; padding:8px 0; text-align:left}
+.reledit{
+  flex:none; width:34px; height:34px; border-radius:9px; font-size:14px; color:var(--ink-3);
+  display:grid; place-items:center;
+}
+.reledit:active{background:var(--sunk)}
+.relrow .nm{flex:1; min-width:0; font-size:14.5px}
+.relrow .via{font-size:12px; color:var(--ink-3); display:block}
+.relrow .kind{font-size:15px; flex:none}
+.kv{display:grid; grid-template-columns:22px 1fr; gap:6px 10px; font-size:14px; color:var(--ink-2); align-items:start}
+.kv .k{text-align:center}
+
+/* ---------------------------------------------------------------- map (OSM) */
+/* A slippy map with no library behind it: tiles are <img>s placed by
+   transform, pins are buttons on top. touch-action:none, or the browser
+   scrolls the sheet instead of panning the map. */
+.gm{
+  position:relative; overflow:hidden; touch-action:none; user-select:none;
+  background:var(--sunk); border-radius:12px; border:1px solid var(--line);
+  height:240px; cursor:grab;
+}
+.gm:active{cursor:grabbing}
+.gm-tiles,.gm-pins{position:absolute; inset:0}
+.gm-tiles img{
+  position:absolute; left:0; top:0; width:256px; height:256px; max-width:none;
+  filter:var(--tile-filter,none);
+}
+.gm-tiles img.miss{visibility:hidden}
+.gm-pins{pointer-events:none}
+.gm-pin{
+  position:absolute; left:0; top:0; margin:-13px 0 0 -13px; padding:0;
+  display:flex; align-items:center; gap:6px; pointer-events:auto;
+}
+.gm-dot{
+  width:26px; height:26px; flex:none; border-radius:50% 50% 50% 4px; transform:rotate(-45deg);
+  border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.45);
+}
+.gm-label{
+  display:none; white-space:nowrap; font-size:12.5px; font-weight:600;
+  background:var(--card); color:var(--ink); border:1px solid var(--line);
+  padding:3px 8px; border-radius:99px; box-shadow:var(--shadow-1);
+}
+.gm-label .sub{display:block; font-weight:400; font-size:11.5px; color:var(--ink-3)}
+.gm-pin.on{z-index:2}
+.gm-pin.on .gm-label{display:block}
+@media (hover:hover){ .gm-pin:hover{z-index:2} .gm-pin:hover .gm-label{display:block} }
+.gm-ctl{position:absolute; right:8px; top:8px; display:flex; flex-direction:column; gap:6px}
+.gm-ctl button{
+  width:34px; height:34px; border-radius:9px; background:var(--card); border:1px solid var(--line);
+  font-size:18px; line-height:1; color:var(--ink); box-shadow:var(--shadow-1);
+}
+.gm-attr{
+  position:absolute; right:0; bottom:0; font-size:10px; padding:2px 6px; text-decoration:none;
+  background:color-mix(in srgb, var(--card) 82%, transparent); color:var(--ink-3);
+  border-top-left-radius:6px;
+}
+.gm-host{height:min(62vh,520px)}
+/* The Orte tab's decade slider. */
+.yearctl{display:flex; gap:12px; align-items:center; padding:12px 2px}
+.yearctl input[type=range]{flex:1; accent-color:var(--accent)}
+.yearctl input[type=range]:disabled{opacity:.35}
+.yearctl b{font-family:var(--mono); font-size:13px; min-width:4ch; text-align:right}
+.gm-empty{
+  position:absolute; inset:0; display:grid; place-items:center; text-align:center;
+  padding:20px; color:var(--ink-3); font-size:14px;
+}
+.gm-suggest{
+  position:absolute; left:0; right:0; top:100%; z-index:6; margin-top:4px;
+  background:var(--card); border:1px solid var(--line-2); border-radius:12px;
+  box-shadow:0 8px 24px rgba(0,0,0,.18); overflow:hidden; max-height:250px; overflow-y:auto;
+}
+.gm-hit{
+  display:flex; align-items:flex-start; gap:9px; width:100%; text-align:left;
+  padding:9px 11px; border-bottom:1px solid var(--line); font-size:14px;
+}
+.gm-hit:last-child{border-bottom:none}
+.gm-hit .ic{flex:none}
+.gm-hit b{font-weight:600; display:block}
+.gm-hit .sub{display:block; font-size:12px; color:var(--ink-3); margin-top:1px}
+
+p.warn{
+  margin:0 0 8px; padding:8px 10px; border-radius:10px; font-size:13px; line-height:1.4;
+  background:var(--sunk); border:1px solid var(--line-2); color:var(--ink-2);
+}
+
+/* ---------------------------------------------------------------- stats */
+.statgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(90px,1fr)); gap:10px}
+.statbox{background:var(--sunk); border-radius:11px; padding:10px 12px}
+.statbox b{display:block; font-family:var(--display); font-size:22px; font-weight:800; letter-spacing:-.03em}
+.statbox span{font-size:11px; color:var(--ink-3); font-family:var(--mono); letter-spacing:.06em; text-transform:uppercase}
+
+/* ---------------------------------------------------------------- auth */
+#gate{
+  position:fixed; inset:0; z-index:80; background:var(--paper); overflow-y:auto;
+  padding:calc(28px + var(--safe-t)) 20px calc(28px + var(--safe-b));
+  display:flex; align-items:center; justify-content:center;
+}
+.gatebox{width:100%; max-width:380px}
+.gatebox h1{font-family:var(--display); font-size:31px; font-weight:800; letter-spacing:-.035em; line-height:1.05}
+.gatebox p.lead{color:var(--ink-2); font-size:15px; margin-top:8px}
+.gatebox .err{color:var(--love); font-size:14px; margin-top:12px; min-height:20px}
+.gatemark{display:flex; gap:5px; margin-bottom:18px}
+.gatemark i{width:13px; height:13px; border-radius:50%; display:block}
+
+/* ---------------------------------------------------------------- toast */
+#toast{
+  position:fixed; left:50%; bottom:calc(var(--tabbar) + 14px); transform:translate(-50%,14px);
+  z-index:90; background:var(--ink); color:var(--paper); padding:10px 16px; border-radius:99px;
+  font-size:14px; opacity:0; pointer-events:none; transition:opacity .2s ease, transform .2s ease;
+  max-width:88vw; text-align:center;
+}
+#toast.show{opacity:1; transform:translate(-50%,0)}
+
+@media (prefers-reduced-motion:reduce){
+  *{transition-duration:.01ms !important; animation-duration:.01ms !important}
+}
+
+/* One connection per line in the add sheet: who, what they are, done. */
+.linkrow{display:flex; gap:7px; align-items:flex-start; margin-top:7px}
+.linkrow select{flex:1; min-width:0}
+.linkrow .ppick{flex:1.4; min-width:0}
+
+/* ---------------------------------------------------- tablets & wide screens
+   One breakpoint for the whole wide layer — the same 760px at which the
+   sheet becomes a side drawer, so there is exactly one line between "phone"
+   and "not a phone". The tab bar stands as a rail on the left, Menschen
+   flows into columns, Geschichten keeps a reading column. */
+@media (min-width:760px){
+  :root{--tabbar:0px}
+
+  #app{flex-direction:row}
+  #tabbar{
+    order:-1; display:flex; flex-direction:column; justify-content:flex-start; gap:6px;
+    width:84px; flex:none; border-top:none; border-right:1px solid var(--line);
+    padding:calc(14px + var(--safe-t)) 8px 14px;
+  }
+  #tabbar button{padding:10px 0; font-size:11px; gap:4px; border-radius:12px}
+  #tabbar button .ico{font-size:23px}
+  #tabbar button.on{background:var(--sunk)}
+
+  .topbar{padding-left:24px; padding-right:24px}
+  .searchbar{padding-left:24px; padding-right:24px}
+  .scroll{padding:0 24px 32px}
+  .chipbar{padding-left:24px; padding-right:16px}
+  .listctl{flex-wrap:wrap; overflow:visible; padding:0 22px 10px}
+
+  /* Menschen: the list fills the width in newspaper columns. The markup is
+     flat (group heads and rows as siblings), which is what CSS columns want. */
+  #people-list{column-width:300px; column-gap:44px; max-width:1200px; margin:0 auto}
+  #people-list .grouphead{break-inside:avoid; break-after:avoid}
+  #people-list .prow,#people-list .empty{break-inside:avoid}
+
+  /* Geschichten is a chronicle: one readable column. */
+  #stories-list{max-width:680px; margin:0 auto}
+  #places-list{max-width:1100px; margin:0 auto}
+
+  .checkscroll{max-height:320px}
+  #scrim{background:rgba(0,0,0,.28)}
+  #toast{bottom:26px}
+}
+@media (min-width:1100px){
+  .sheet{width:500px}
+}
+
+/* The person picker: an input while searching, a chip once chosen. */
+.ppick{position:relative}
+.ppick input{
+  width:100%; padding:11px 12px; border-radius:11px; border:1px solid var(--line);
+  background:var(--paper); color:var(--ink);
+}
+.ppick input:focus{outline:none; border-color:var(--accent)}
+.ppick-list{
+  position:absolute; left:0; right:0; top:100%; z-index:6; margin-top:4px;
+  background:var(--card); border:1px solid var(--line-2); border-radius:12px;
+  box-shadow:0 8px 24px rgba(0,0,0,.18); overflow:hidden; max-height:250px; overflow-y:auto;
+}
+.ppick-hit{
+  display:flex; align-items:center; gap:9px; width:100%; text-align:left;
+  padding:8px 11px; border-bottom:1px solid var(--line); font-size:14px; color:var(--ink);
+}
+.ppick-hit:last-child{border-bottom:none}
+.ppick-hit b{font-weight:600; display:block; line-height:1.2}
+.ppick-hit .sub{display:block; font-size:12px; color:var(--ink-3)}
+.ppick-chosen{
+  display:flex; align-items:center; gap:8px; width:100%; text-align:left;
+  padding:7px 10px; border-radius:11px; border:1px solid var(--line);
+  background:var(--paper); color:var(--ink); font-size:15px;
+}
+.ppick-chosen .nm{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.ppick-chosen .x{flex:none; color:var(--ink-3); font-size:17px}
+.ppick-chosen:disabled{opacity:1; cursor:default}

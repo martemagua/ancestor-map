@@ -1,0 +1,12 @@
+# Live data never enters the repository — this is a public repo and the app
+# holds a real family's records. Screenshots and fixtures come from the seeded
+# fictional family only (tools/seed-demo.mjs).
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+node_modules/
+.DS_Store
+screenshots/
