@@ -3,7 +3,7 @@
 // fixture is the kinship test's family, wired through the real store.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { S, reindex } from '../public/js/store.js';
+import { S, reindex, proband } from '../public/js/store.js';
 import {
   indexGenerations, genY, indexYears, zeitY, zeitBase, edgeRoom, labelEarned, shelfSpan, ROW,
 } from '../public/js/map.js';
@@ -76,6 +76,73 @@ test('generations walk out signed from the proband', () => {
   assert.equal(gen(7), 1, 'aunt sits with the parents');
   assert.equal(gen(17), 2, 'great-uncle sits with the grandparents');
   assert.equal(gen(21), 0, 'unreached people default to the proband row');
+});
+
+// A family typed in but not yet joined to the rest — the normal state of an
+// evening's work, and permanent for a branch researched on its own.
+function withIsland({ years = false } = {}) {
+  fixture();
+  const island = [
+    { id: 30, name: 'Insel-Oma', birth_year: years ? 1901 : null },
+    { id: 31, name: 'Insel-Sohn', birth_year: years ? 1930 : null },
+    { id: 32, name: 'Insel-Enkel', birth_year: years ? 1958 : null },
+  ].map(p => ({ branches: [], archived: 0, ...p }));
+  S.persons.push(...island);
+  S.unions.push({ id: 200, kind: 'ehe' }, { id: 201, kind: 'ehe' });
+  S.union_partners.push({ union_id: 200, person_id: 30 }, { union_id: 201, person_id: 31 });
+  S.children.push({ union_id: 200, child_id: 31 }, { union_id: 201, child_id: 32 });
+  reindex();
+  indexGenerations(S.persons);
+  return S.persons;
+}
+
+test('a family not yet joined to the rest keeps its own generations', () => {
+  withIsland();
+  const gen = id => S.personById[id]._gen;
+  // Dropping everyone the walk missed onto row 0 drew a grandmother, her son
+  // and her grandson side by side as though they were siblings.
+  assert.equal(gen(30) - gen(31), 1, 'the mother is one row above her son');
+  assert.equal(gen(31) - gen(32), 1, 'and he one above his own son');
+  assert.equal(gen(31), 0, 'hung from its best-attached member, nothing claimed');
+  // Someone attached to nobody at all still has nothing to say for themselves.
+  assert.equal(gen(21), 0, 'Zé stays on the proband row');
+});
+
+test('an unjoined family is placed by its birth years when it has them', () => {
+  withIsland({ years: true });
+  const gen = id => S.personById[id]._gen;
+  // Born 1901 against a proband born 1949: about two generations up, so she
+  // lands beside the people she actually belongs beside rather than at 0.
+  assert.equal(gen(30), 2, 'the 1901 grandmother sits with the grandparents');
+  assert.equal(gen(31), 1);
+  assert.equal(gen(32), 0);
+});
+
+test('the default view is your own, even before you are linked in', () => {
+  fixture();
+  // An account whose person is in the tree but attached to nobody yet —
+  // every evening of data entry starts here.
+  S.persons.push({ id: 40, name: 'Ich', birth_year: 1949, branches: [], archived: 0 });
+  Object.assign(S, { mePersonId: 40, probandId: null, probandPinned: false });
+  reindex();
+  assert.equal(proband()?.id, 40, 'the tree opens on you, not on a stranger');
+
+  // And the family already typed in keeps its generations rather than
+  // collapsing into one row because the centre cannot reach it.
+  indexGenerations(S.persons);
+  const rows = new Set(S.persons.map(p => p._gen));
+  assert.ok(rows.size > 1, 'the rest of the tree is still a tree');
+  assert.equal(S.personById[3]._gen - S.personById[6]._gen, 1, 'Wilhelm stays a row above Otto');
+});
+
+test('with no person of their own, an account reads the tree from its centre', () => {
+  fixture();
+  Object.assign(S, { mePersonId: null, probandId: null, probandPinned: false });
+  reindex();
+  const p = proband();
+  assert.ok(p, 'somebody is chosen rather than nobody');
+  assert.ok((S.unionsOfPerson[p.id] || []).length + (S.parentUnionsOf[p.id] || []).length > 0,
+    'and it is somebody the tree actually reads from');
 });
 
 test('the proband switch re-reads the rows', () => {

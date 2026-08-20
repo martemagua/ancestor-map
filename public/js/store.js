@@ -200,15 +200,22 @@ const familyWeight = id => (S.unionsOfPerson[id] || []).length
   + (S.unionsOfPerson[id] || []).reduce((n, u) => n + (S.childrenOfUnion[u] || []).length, 0);
 
 /**
- * Who the tree centres on when nobody has said. Your own person, as soon as
- * they are actually in the tree — otherwise whoever the tree reads best
- * from. That second case is a fresh install: your account's person hangs
- * off nothing yet, and centring on them would flatten every generation into
- * one row, because nobody is reachable from an island.
+ * Who the tree centres on when nobody has said: **you**. Opening the app,
+ * and stepping back out of somebody else's perspective, both land here, so
+ * "your view" is a place you can always get back to rather than a mood the
+ * data is in.
+ *
+ * This used to hand your own person back the moment they hung off nothing,
+ * because centring on an island flattened every generation into one row.
+ * indexGenerations walks each unattached family on its own now, so an
+ * island centre costs nothing — and refusing your own view on a half-typed
+ * tree was the worse of the two, since that is exactly when you are looking
+ * at it. Somebody else's tree is only chosen when the account has no person
+ * of its own at all.
  */
 function defaultProband() {
   const me = S.personById[S.mePersonId] ? S.mePersonId : null;
-  if (me && familyWeight(me)) return me;
+  if (me) return me;
   let best = null, bestWeight = 0;
   for (const p of S.persons) {
     const weight = familyWeight(p.id);
