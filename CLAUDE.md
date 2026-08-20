@@ -62,6 +62,14 @@ nodes.
   The shared row is "the documented record", a personal row is "my
   hypothesis". An emptied personal field deletes its row (an empty row would
   mask the record forever); `toStored` turns an empty number into `''`, not 0.
+- **A registry field may be conditional (`showIf`), and the rule that makes
+  that safe is that a field holding a value is always shown.** Hiding may only
+  ever affect empty fields — otherwise one wrong tap on "lebt" strands a
+  recorded cause of death somewhere invisible and unreachable.
+- **Whether somebody is alive is asked, not derived.** `living` is its own
+  field (lebt / verstorben / unbekannt) because you often know a person died
+  without knowing when, and the fuzzy grammar cannot say the first without
+  inventing the second. It is what the death block hangs off.
 - **Unions are first-class**: `unions` + `union_partners` + `children
   (union_id, child_id, role)`. Children always hang off a union; a single
   known parent is a one-partner union (GEDCOM-compatible). No parent columns
@@ -75,9 +83,24 @@ nodes.
   union is how a grandmother ended up beside her husband while their
   daughter dangled from him alone, unrepairable from any form. A stated
   `kind` replaces only the `'unbekannt'` placeholder, never a real one.
-- `relationships(a_id, b_id, kind, label)` are the free-form described links
-  (godmother, exchange family, …), undirected — `pair()` stores the lower id
-  in `a_id`. They are deliberately separate from the tree structure.
+- **The vocabularies live in `public/js/vocab.js`, once.** Relationship kinds,
+  union kinds, how a union ended, child roles, story kinds. Both sides import
+  it — the browser to draw the pickers, the server to refuse anything else on
+  write — because they used to be written out twice and a kind the form offers
+  and the server rejects is a bug you find on a Sunday. `tests/vocab.test.js`
+  holds them to it, including that every id is sayable in all three languages.
+- `relationships(a_id, b_id, kind, label, from_id)` are the free-form described
+  links (godmother, exchange family, guardian, …), separate from the tree
+  structure. `pair()` stores the lower id in `a_id`, so the row itself is
+  undirected — **`from_id` is the one direction it carries**, for the kinds
+  marked `directed` in vocab.js: a guardian and a ward are not the same thing
+  said twice. It is normalised on every write the way Friend-Map normalises a
+  family degree's elder — always one of the row's own two ends, and dropped
+  entirely for a mutual kind, so changing Vormund to Freunde can never leave a
+  stale direction behind for a card to read later.
+- **How a union ended is `ended_reason`, not a kind.** A divorced marriage was
+  still a marriage; GEDCOM draws the same line (MARR made it, DIV ended it).
+  Putting 'geschieden' in `unions.kind` would overwrite what it was.
 - `branches` nest like Friend-Map's circles: membership is stored only at the
   innermost branch and inherited upward. Ring refusal happens at write *and*
   import; the client walks are only guarded so an old database can't hang the
@@ -90,6 +113,14 @@ nodes.
   (`composeFuzzy`/`toParts`), writes into a hidden input carrying the
   field's `data-f`, and keeps free text as free text; the round trip is
   tested under plain node.
+- **Geschichten carries life events as well as anecdotes**, and that is
+  deliberate: a residence, an emigration, a term of service and a census entry
+  are all a kind, a fuzzy date, a place and the people involved — the shape
+  GEDCOM gives an event. Widening `STORY_KINDS` is how a new dated fact gets
+  recorded; adding a person field for each would be a wider form every time,
+  a dead end for anything with two dates, and invisible to Orte and Zeit. The
+  card's Lebenslauf merges the structural dates, the marriages and every story
+  into one spine.
 - Kinship ("your great-aunt", "cousin twice removed") is computed by
   `public/js/kinship.js` from the union graph relative to the current
   proband — never stored. Same for generations.
