@@ -216,6 +216,18 @@ export default {
   'add.rel_none': 'Por enquanto sem ligação',
   'add.create': 'Criar',
   'add.create_more': 'Criar e adicionar mais alguém',
+  'add.more': 'Mais detalhes',
+  'fd.exact': 'Exata',
+  'fd.circa': 'Por volta de (~)',
+  'fd.before': 'Antes de (<)',
+  'fd.after': 'Depois de (>)',
+  'fd.range': 'Período',
+  'fd.text': 'Texto livre',
+  'fd.year': 'Ano',
+  'fd.month': 'Mês?',
+  'fd.day': 'Dia?',
+  'fd.to': 'até',
+  'fd.raw_ph': 'ex.: Páscoa de 1885',
 
   // União
   'union.title': 'União',

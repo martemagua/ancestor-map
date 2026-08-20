@@ -70,15 +70,22 @@ try {
     await page.waitForSelector('.sheet.show');
     await page.fill('.sheet [data-f="name"]', 'Wilhelm Probe');
     await page.selectOption('.sheet [data-f="sex"]', 'm');
-    await page.fill('.sheet [data-f="birth"]', '~1930');
+    // The date picker, driven the way a person drives it: qualifier, year.
+    await page.selectOption('.sheet [data-fdate="birth"] [data-fd="kind"]', 'circa');
+    await page.fill('.sheet [data-fdate="birth"] [data-fd-side="a"] [data-fd="y"]', '1930');
     await page.selectOption('.sheet [data-f="how"]', 'parent_of');
+    // The folded details take more facts in the same visit.
+    await page.click('.sheet [data-more-fields] summary');
+    await page.fill('.sheet [data-f="nickname"]', 'Willi');
     await page.click('.sheet [data-save]');
     await page.waitForSelector('.sheet.show .phead', { timeout: 5000 });
   });
 
-  await step("the card shows the father's kinship line", async () => {
+  await step("the card shows the father's kinship line and the folded fact", async () => {
     const side = await page.textContent('.sheet.show .phead .side');
     if (!side.includes('Vater')) throw new Error(`kin line reads "${side}"`);
+    const body = await page.textContent('.sheet.show');
+    if (!body.includes('Willi')) throw new Error('the nickname from the folded details is not on the card');
   });
 
   await step('editing adds a documented occupation', async () => {
@@ -97,7 +104,8 @@ try {
     await page.click('[data-newstory]');
     await page.waitForSelector('.sheet.show [data-f="title"]');
     await page.fill('.sheet.show [data-f="title"]', 'Probefahrt');
-    await page.fill('.sheet.show [data-f="date"]', '1965');
+    await page.fill('.sheet.show [data-fdate="date"] [data-fd-side="a"] [data-fd="y"]', '1965');
+    await page.selectOption('.sheet.show [data-fdate="date"] [data-fd="m"]', '');
     await page.click('.sheet.show [data-save]');
     await page.waitForSelector('#stories-list .prow', { timeout: 5000 });
   });

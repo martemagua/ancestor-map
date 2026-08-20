@@ -76,7 +76,11 @@ nodes.
 - Fuzzy dates are an EDTF subset handled solely by `public/js/fuzzydate.js`
   (`1885`, `1885-03`, `1885-03-14`, `~1885`, `<1920`, `>1918`,
   `1914..1918`). Store the text; derive `*_year` through `sortYear()` on
-  every write. Don't parse dates anywhere else.
+  every write. Don't parse dates anywhere else — the forms' date picker
+  (`fuzzyDateHtml`/`mountFuzzyDates` in ui.js) also composes through it
+  (`composeFuzzy`/`toParts`), writes into a hidden input carrying the
+  field's `data-f`, and keeps free text as free text; the round trip is
+  tested under plain node.
 - Kinship ("your great-aunt", "cousin twice removed") is computed by
   `public/js/kinship.js` from the union graph relative to the current
   proband — never stored. Same for generations.

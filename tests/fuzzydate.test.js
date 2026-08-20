@@ -2,7 +2,9 @@
 // language — and that free text passes through untouched.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFuzzy, isParseable, sortYear, formatFuzzy, lifespan } from '../public/js/fuzzydate.js';
+import {
+  parseFuzzy, isParseable, sortYear, formatFuzzy, lifespan, composeFuzzy, toParts,
+} from '../public/js/fuzzydate.js';
 import { setLang } from '../public/js/i18n.js';
 
 test('parses the grammar', () => {
@@ -82,4 +84,48 @@ test('lifespan builds the years line', () => {
   assert.equal(lifespan('', ''), '');
   assert.equal(lifespan('Ostern 1885', ''), '');
   setLang('en');
+});
+
+// The picker edits these pieces, so the round trip has to be lossless — and
+// half-filled pieces have to compose into something the parser accepts,
+// because that is what a form looks like most of the time.
+test('a stored date breaks into pieces and back again', () => {
+  for (const text of ['1885', '1885-03', '1885-03-14', '~1885', '<1920', '>1918',
+    '1914..1918', '1914-07..1918-11', 'Ostern 1885', '']) {
+    assert.equal(composeFuzzy(toParts(text)), text, `round trip of "${text}"`);
+  }
+});
+
+test('composing pieces obeys the grammar', () => {
+  const of = (kind, a, b) => composeFuzzy({ kind, a, b });
+  assert.equal(of('exact', { y: '1885' }), '1885');
+  assert.equal(of('exact', { y: '1885', m: 3 }), '1885-03', 'the month is padded');
+  assert.equal(of('exact', { y: '1885', m: 3, d: 4 }), '1885-03-04');
+  assert.equal(of('circa', { y: '1885' }), '~1885');
+  assert.equal(of('range', { y: '1914' }, { y: '1918' }), '1914..1918');
+  // A day with no month is not something the grammar can say, so it is dropped
+  // rather than written out as a date nobody can read back.
+  assert.equal(of('exact', { y: '1885', d: 14 }), '1885');
+  // Half a range is the half that is known, not a broken range.
+  assert.equal(of('range', { y: '1914' }, {}), '1914');
+  // Nothing in, nothing stored — an empty year clears the field.
+  assert.equal(of('exact', {}), '');
+  assert.equal(of('circa', { y: '' }), '');
+  assert.equal(composeFuzzy({ kind: 'text', raw: '  Ostern 1885 ' }), 'Ostern 1885');
+});
+
+test('everything the picker composes is something the parser accepts', () => {
+  const cases = [
+    ['exact', { y: '1885', m: 12, d: 31 }],
+    ['circa', { y: '900' }],
+    ['before', { y: '1920', m: 1 }],
+    ['after', { y: '1918', m: 11, d: 9 }],
+  ];
+  for (const [kind, a] of cases) {
+    const text = composeFuzzy({ kind, a });
+    assert.ok(isParseable(text), `"${text}" parses`);
+    assert.equal(parseFuzzy(text).kind, kind);
+  }
+  const range = composeFuzzy({ kind: 'range', a: { y: '1914' }, b: { y: '1918' } });
+  assert.equal(sortYear(range), 1916, 'and a composed range still sorts by its middle');
 });

@@ -254,6 +254,38 @@ button{cursor:pointer; background:none; border:none}
 .check input{width:20px; height:20px; flex:none; accent-color:var(--accent)}
 .checkscroll{max-height:200px; overflow-y:auto; border:1px solid var(--line); border-radius:11px; padding:6px 10px}
 
+/* A date and the place it happened, kept together — they are recorded in
+   one breath and read as one fact. */
+.lifeevent{
+  margin-top:16px; padding:12px 12px 14px; border:1px solid var(--line);
+  border-radius:13px; background:var(--paper-2, transparent);
+}
+.lifeevent > .field:first-child, .lifeevent > .fdate:first-child{margin-top:0}
+
+/* The fuzzy-date picker. Year/month/day sit on one line; the qualifier above
+   them decides which of the two lines is even shown. */
+.fdate .fd-parts{display:grid; grid-template-columns:5.2rem 1fr 4.4rem; gap:7px; margin-top:7px}
+.fdate .fd-parts > *{min-width:0}
+.fdate select[data-fd="d"]:disabled{opacity:.45}
+.fdate .fd-to,
+.fdate [data-fd-side="b"]{display:none}
+.fdate.is-range .fd-to{display:block; font-size:12.5px; color:var(--ink-3); margin-top:8px}
+.fdate.is-range [data-fd-side="b"]{display:grid}
+.fdate .fd-raw{display:none}
+.fdate.is-text .fd-raw{display:block; margin-top:7px}
+.fdate.is-text .fd-parts{display:none}
+.fdate .fd-preview{font-size:12.5px; color:var(--ink-3); margin-top:6px; min-height:1em}
+
+/* "More details" — folded away so the fast path stays fast. */
+details.more{margin-top:18px; border-top:1px solid var(--line); padding-top:6px}
+details.more > summary{
+  cursor:pointer; padding:9px 2px; font-size:13.5px; color:var(--accent);
+  list-style:none; user-select:none;
+}
+details.more > summary::-webkit-details-marker{display:none}
+details.more > summary::before{content:'▸'; display:inline-block; margin-right:6px; transition:transform .15s}
+details.more[open] > summary::before{transform:rotate(90deg)}
+
 /* ---------------------------------------------------------------- sheets */
 #scrim{
   position:fixed; inset:0; background:rgba(0,0,0,.42); z-index:40; opacity:0; pointer-events:none;

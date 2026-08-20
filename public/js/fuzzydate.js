@@ -56,6 +56,59 @@ export function parseFuzzy(text) {
   return parts ? { kind: 'exact', parts } : { kind: 'text', raw: s };
 }
 
+const pad = n => String(n).padStart(2, '0');
+
+/**
+ * The other direction: the grammar written back out from the pieces a form
+ * collected. `{kind, a:{y,m,d}, b:{y,m,d}, raw}` — a missing month drops the
+ * day with it, because "the 14th of some month in 1885" is not a thing this
+ * grammar can say, and a range needs both ends before it means anything.
+ *
+ * Here rather than in the form so the round trip parse → edit → compose is
+ * checked under plain node, and so there is still exactly one module that
+ * knows what a stored date looks like.
+ */
+export function composeFuzzy({ kind = 'exact', a = {}, b = {}, raw = '' } = {}) {
+  if (kind === 'text') return String(raw ?? '').trim();
+  const side = ({ y, m, d }) => {
+    const year = String(y ?? '').trim();
+    if (!year || !/^\d{1,4}$/.test(year)) return '';
+    if (!m) return year;
+    if (!d) return `${year}-${pad(m)}`;
+    return `${year}-${pad(m)}-${pad(d)}`;
+  };
+  const first = side(a);
+  if (!first) return '';
+  if (kind === 'range') {
+    const second = side(b);
+    return second ? `${first}..${second}` : first;
+  }
+  const mark = { circa: '~', before: '<', after: '>' }[kind];
+  return mark ? mark + first : first;
+}
+
+/**
+ * A stored date as the pieces a form edits — the shape `composeFuzzy` takes
+ * back. Free text and anything unparseable come back as `kind: 'text'` with
+ * the original in `raw`, so opening a form on "Ostern 1885" and saving it
+ * again cannot quietly destroy it.
+ */
+export function toParts(text) {
+  const p = parseFuzzy(text);
+  const empty = { y: '', m: '', d: '' };
+  if (!p) return { kind: 'exact', a: { ...empty }, b: { ...empty }, raw: '' };
+  if (p.kind === 'text') {
+    return { kind: 'text', a: { ...empty }, b: { ...empty }, raw: p.raw };
+  }
+  const side = parts => ({ y: String(parts.y), m: parts.m ?? '', d: parts.d ?? '' });
+  return {
+    kind: p.kind,
+    a: side(p.parts),
+    b: p.parts2 ? side(p.parts2) : { ...empty },
+    raw: '',
+  };
+}
+
 /** True when the text follows the grammar (free text and empty do not). */
 export function isParseable(text) {
   const p = parseFuzzy(text);

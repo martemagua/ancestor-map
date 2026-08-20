@@ -6,7 +6,10 @@ import {
   S, SORTS, GROUPS, QUICK, peopleList, savePeopleView, escapeHtml,
   branchesWithParents, lighten, lifespan, kinLabel, storyKind, STORY_KINDS, todayISO,
 } from './store.js';
-import { avatarHtml, openPerson, openSheet, closeSheet, toast, refreshNow, canEdit, personPicker } from './ui.js';
+import {
+  avatarHtml, openPerson, openSheet, closeSheet, toast, refreshNow, canEdit,
+  personPicker, fuzzyDateHtml, mountFuzzyDates,
+} from './ui.js';
 import { formatFuzzy } from './fuzzydate.js';
 import { t } from './i18n.js';
 
@@ -212,13 +215,10 @@ export function openStoryForm(s = null, presetPeople = []) {
   const body = `
     <label class="field"><span>${escapeHtml(t('story.title_label'))}</span>
       <input data-f="title" value="${escapeHtml(s?.title || '')}"></label>
-    <div class="two">
-      <label class="field"><span>${escapeHtml(t('story.kind'))}</span>
-        <select data-f="kind">${STORY_KINDS.map(k =>
-          `<option value="${k.id}" ${s?.kind === k.id ? 'selected' : ''}>${k.icon} ${escapeHtml(t('sk.' + k.id))}</option>`).join('')}</select></label>
-      <label class="field"><span>${escapeHtml(t('story.when'))}</span>
-        <input data-f="date" value="${escapeHtml(s?.date ?? todayISO())}" placeholder="${escapeHtml(t('form.fuzzy_ph'))}" autocomplete="off"></label>
-    </div>
+    <label class="field"><span>${escapeHtml(t('story.kind'))}</span>
+      <select data-f="kind">${STORY_KINDS.map(k =>
+        `<option value="${k.id}" ${s?.kind === k.id ? 'selected' : ''}>${k.icon} ${escapeHtml(t('sk.' + k.id))}</option>`).join('')}</select></label>
+    ${fuzzyDateHtml('date', s?.date ?? todayISO(), { label: t('story.when') })}
     <label class="field"><span>${escapeHtml(t('story.where'))}</span>
       <input data-f="place" value="${escapeHtml(s?.place || '')}" autocomplete="off"></label>
     <label class="field"><span>${escapeHtml(t('story.text'))}</span>
@@ -232,6 +232,7 @@ export function openStoryForm(s = null, presetPeople = []) {
 
   openSheet(s ? s.title : t('story.new'), body, {
     onMount(root) {
+      mountFuzzyDates(root);
       // Coordinates ride with the place text; a hand edit clears them.
       let coords = { lat: s?.lat ?? null, lon: s?.lon ?? null };
       import('./geo.js').then(geo => geo.attachPlacePicker(root.querySelector('[data-f="place"]'), {

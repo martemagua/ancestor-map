@@ -216,6 +216,18 @@ export default {
   'add.rel_none': 'No connection for now',
   'add.create': 'Create',
   'add.create_more': 'Create and add another',
+  'add.more': 'More details',
+  'fd.exact': 'Exact',
+  'fd.circa': 'Circa (~)',
+  'fd.before': 'Before (<)',
+  'fd.after': 'After (>)',
+  'fd.range': 'Range',
+  'fd.text': 'Free text',
+  'fd.year': 'Year',
+  'fd.month': 'Month?',
+  'fd.day': 'Day?',
+  'fd.to': 'to',
+  'fd.raw_ph': 'e.g. Easter 1885',
 
   // Union form
   'union.title': 'Union',

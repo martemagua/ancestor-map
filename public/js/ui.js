@@ -9,7 +9,7 @@ import {
   kinLabel, relsOf, otherEnd, otherViewsOf, lifespan, buildLabel, branchPalette,
 } from './store.js';
 import { FIELDS, SECTIONS, fieldsIn, fromStored, toStored, isEmpty } from './fields.js';
-import { formatFuzzy } from './fuzzydate.js';
+import { formatFuzzy, composeFuzzy, toParts } from './fuzzydate.js';
 import { t, LANGS, LANG_NAMES, getLang } from './i18n.js';
 
 let refresh = async () => {};
@@ -178,6 +178,85 @@ export function personPicker(host, {
   };
 }
 
+// ------------------------------------------------------------------ dates
+//
+// Genealogy dates are half-known far more often than not, so the picker is
+// built around the grammar rather than around a calendar: a qualifier, then
+// year / month / day, each of which may simply be left out. A browser's
+// native date input cannot say "um 1885" or "1885, month unknown" — it wants
+// a whole day or nothing — which is why there is a hand-made one here.
+//
+// It writes into a hidden input carrying the field's `data-f`, so every
+// existing reader (val(), readFields()) goes on working without knowing a
+// picker happened.
+
+const FD_KINDS = ['exact', 'circa', 'before', 'after', 'range', 'text'];
+
+export function fuzzyDateHtml(key, value, { label = '' } = {}) {
+  const st = toParts(value);
+  const months = t('date.months').split('|');
+  const opts = (list, sel, blank) =>
+    `<option value="">${escapeHtml(blank)}</option>` + list.map(([v, txt]) =>
+      `<option value="${v}"${String(sel) === String(v) ? ' selected' : ''}>${escapeHtml(txt)}</option>`).join('');
+  const side = (which, parts) => `
+    <div class="fd-parts" data-fd-side="${which}">
+      <input data-fd="y" type="number" inputmode="numeric" min="1" max="9999"
+        placeholder="${escapeHtml(t('fd.year'))}" value="${escapeHtml(parts.y)}" autocomplete="off">
+      <select data-fd="m">${opts(months.map((n, i) => [i + 1, n]), parts.m, t('fd.month'))}</select>
+      <select data-fd="d">${opts(Array.from({ length: 31 }, (_, i) => [i + 1, i + 1]), parts.d, t('fd.day'))}</select>
+    </div>`;
+
+  return `<div class="field fdate" data-fdate="${key}">
+    ${label ? `<span>${escapeHtml(label)}</span>` : ''}
+    <input type="hidden" data-f="${key}" value="${escapeHtml(value ?? '')}">
+    <select data-fd="kind">${FD_KINDS.map(k =>
+    `<option value="${k}"${st.kind === k ? ' selected' : ''}>${escapeHtml(t('fd.' + k))}</option>`).join('')}</select>
+    ${side('a', st.a)}
+    <div class="fd-to" data-fd-to>${escapeHtml(t('fd.to'))}</div>
+    ${side('b', st.b)}
+    <input data-fd="raw" class="fd-raw" value="${escapeHtml(st.raw)}"
+      placeholder="${escapeHtml(t('fd.raw_ph'))}" autocomplete="off">
+    <div class="fd-preview" data-fd-preview aria-live="polite"></div>
+  </div>`;
+}
+
+/** Wire every picker inside `root`: keep the hidden input and the preview true. */
+export function mountFuzzyDates(root) {
+  for (const box of root.querySelectorAll('[data-fdate]')) {
+    const q = sel => box.querySelector(sel);
+    const out = q('input[type="hidden"]');
+    const kindEl = q('[data-fd="kind"]');
+    const partOf = which => {
+      const s = box.querySelector(`[data-fd-side="${which}"]`);
+      return { y: s.querySelector('[data-fd="y"]').value, m: s.querySelector('[data-fd="m"]').value, d: s.querySelector('[data-fd="d"]').value };
+    };
+    const sync = () => {
+      const kind = kindEl.value;
+      const isText = kind === 'text';
+      const isRange = kind === 'range';
+      box.classList.toggle('is-text', isText);
+      box.classList.toggle('is-range', isRange);
+      // A day with no month cannot be stored, so it is not offered either —
+      // an enabled control that silently drops what you pick is a small lie.
+      for (const which of ['a', 'b']) {
+        const s = box.querySelector(`[data-fd-side="${which}"]`);
+        const day = s.querySelector('[data-fd="d"]');
+        day.disabled = !s.querySelector('[data-fd="m"]').value;
+        if (day.disabled) day.value = '';
+      }
+      out.value = composeFuzzy({ kind, a: partOf('a'), b: partOf('b'), raw: q('[data-fd="raw"]').value });
+      const shown = formatFuzzy(out.value);
+      q('[data-fd-preview]').textContent = shown && shown !== out.value ? shown : '';
+      box.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    box.querySelectorAll('[data-fd]').forEach(el => {
+      el.addEventListener('input', sync);
+      el.addEventListener('change', sync);
+    });
+    sync();
+  }
+}
+
 // ------------------------------------------------------------------ form fields
 //
 // One renderer and one reader for every field in the registry. Adding a type
@@ -191,6 +270,12 @@ function fieldHtml(field, raw) {
   const label = `<span>${escapeHtml(t(field.label))}${hint}</span>`;
   const ph = field.placeholder ? ` placeholder="${escapeHtml(t(field.placeholder))}"` : '';
 
+  // A picker is a block of controls, not one input, so it brings its own
+  // label and is not wrapped in the <label> the simple types use.
+  if (field.type === 'fuzzydate') {
+    return fuzzyDateHtml(field.key, shown, { label: t(field.label) });
+  }
+
   const input = () => {
     switch (field.type) {
       case 'textarea':
@@ -199,8 +284,6 @@ function fieldHtml(field, raw) {
         return `<input data-f="${field.key}" type="number" inputmode="numeric" value="${escapeHtml(shown === null ? '' : shown)}"${ph}>`;
       case 'bool':
         return `<input data-f="${field.key}" type="checkbox" ${value ? 'checked' : ''}>`;
-      case 'fuzzydate':
-        return `<input data-f="${field.key}" value="${escapeHtml(shown)}" placeholder="${escapeHtml(t('form.fuzzy_ph'))}" autocomplete="off">`;
       default:
         return `<input data-f="${field.key}" value="${escapeHtml(shown)}"${ph}>`;
     }
@@ -394,22 +477,34 @@ export function openPerson(id) {
 
 // ------------------------------------------------------------------ person form
 
+/**
+ * Everything but the structural pieces is drawn from the registry — a new
+ * field is one entry in fields.js and nothing here. Consecutive half-width
+ * fields share a row. Shared by both forms, so the quick add and the full
+ * edit can never drift apart on what a field looks like.
+ */
+function section(which, p) {
+  const out = [];
+  for (const f of fieldsIn(which)) {
+    const html = fieldHtml(f, p ? p[f.key] : undefined);
+    const last = out[out.length - 1];
+    if (f.half && last?.open) { last.html += html; last.open = false; }
+    else out.push({ html, open: Boolean(f.half), pair: Boolean(f.half) });
+  }
+  return out.map(row => (row.pair ? `<div class="two">${row.html}</div>` : row.html)).join('');
+}
+
+/** A date and the place it happened, which is how both of them are recorded. */
+function lifeEventHtml(which, p) {
+  return `<div class="lifeevent">
+    ${fuzzyDateHtml(which, p?.[which] || '', { label: t('p.' + which) })}
+    <label class="field"><span>${escapeHtml(t(`p.${which}_place`))}</span>
+      <input data-f="${which}_place" value="${escapeHtml(p?.[`${which}_place`] || '')}" autocomplete="off"></label>
+  </div>`;
+}
+
 export function openPersonForm(id) {
   const p = id ? S.personById[id] : null;
-
-  // Everything but the structural pieces is drawn from the registry — a new
-  // field is one entry in fields.js and nothing here. Consecutive half-width
-  // fields share a row.
-  const section = which => {
-    const out = [];
-    for (const f of fieldsIn(which)) {
-      const html = fieldHtml(f, p ? p[f.key] : undefined);
-      const last = out[out.length - 1];
-      if (f.half && last?.open) { last.html += html; last.open = false; }
-      else out.push({ html, open: Boolean(f.half), pair: Boolean(f.half) });
-    }
-    return out.map(row => (row.pair ? `<div class="two">${row.html}</div>` : row.html)).join('');
-  };
 
   const branchBoxes = treeOrder().map(({ branch: b }) => `<label class="check">
     <input type="checkbox" value="${b.id}" ${p?.branches?.includes(b.id) ? 'checked' : ''}>
@@ -426,29 +521,18 @@ export function openPersonForm(id) {
         <option value="m" ${p?.sex === 'm' ? 'selected' : ''}>${escapeHtml(t('sex.m'))}</option>
       </select></label>
 
-    <div class="two">
-      <label class="field"><span>${escapeHtml(t('p.birth'))}</span>
-        <input data-f="birth" value="${escapeHtml(p?.birth || '')}" placeholder="${escapeHtml(t('form.fuzzy_ph'))}" autocomplete="off"></label>
-      <label class="field"><span>${escapeHtml(t('p.birth_place'))}</span>
-        <input data-f="birth_place" value="${escapeHtml(p?.birth_place || '')}" autocomplete="off"></label>
-    </div>
-    <div class="two">
-      <label class="field"><span>${escapeHtml(t('p.death'))}</span>
-        <input data-f="death" value="${escapeHtml(p?.death || '')}" placeholder="${escapeHtml(t('form.fuzzy_ph'))}" autocomplete="off"></label>
-      <label class="field"><span>${escapeHtml(t('p.death_place'))}</span>
-        <input data-f="death_place" value="${escapeHtml(p?.death_place || '')}" autocomplete="off"></label>
-    </div>
-    <p class="muted" style="margin-top:6px">${escapeHtml(t('form.fuzzy_hint'))}</p>
+    ${lifeEventHtml('birth', p)}
+    ${lifeEventHtml('death', p)}
 
-    ${section('notiz')}
-    ${section('kopf')}
+    ${section('notiz', p)}
+    ${section('kopf', p)}
 
     ${S.branches.length ? `<div class="lbl" style="margin-top:20px">${escapeHtml(t('card.branches'))}</div>
     <div class="checkscroll" data-branches>${branchBoxes}</div>` : ''}
 
     ${SECTIONS.filter(sec => sec.label).map(sec => `
       <div class="lbl" style="margin-top:22px">${escapeHtml(t(sec.label))}</div>
-      ${section(sec.id)}`).join('')}
+      ${section(sec.id, p)}`).join('')}
 
     <button class="btn primary wide" data-save style="margin-top:22px">${escapeHtml(t('ui.save'))}</button>
     ${p ? `<button class="btn danger wide" data-delete style="margin-top:10px">${escapeHtml(t('form.delete_person'))}</button>` : ''}
@@ -456,6 +540,7 @@ export function openPersonForm(id) {
 
   openSheet(p ? t('form.edit_person', { name: p.name }) : t('form.new_person'), body, {
     onMount(root) {
+      mountFuzzyDates(root);
       // Coordinates ride along with the place text. Editing the text by hand
       // drops them — they would otherwise still point at the old place; only
       // picking a suggestion (or the admin backfill) sets them.
@@ -518,14 +603,13 @@ export function openQuickAdd({ relativeOf = null } = {}) {
   const body = `
     <label class="field"><span>${escapeHtml(t('ui.name'))}</span>
       <input data-f="name" placeholder="${escapeHtml(t('form.name_ph'))}" autocomplete="off"></label>
-    <div class="two">
-      <label class="field"><span>${escapeHtml(t('p.sex'))}</span>
-        <select data-f="sex"><option value="">–</option>
-          <option value="f">${escapeHtml(t('sex.f'))}</option>
-          <option value="m">${escapeHtml(t('sex.m'))}</option></select></label>
-      <label class="field"><span>${escapeHtml(t('p.birth'))}</span>
-        <input data-f="birth" placeholder="${escapeHtml(t('form.fuzzy_ph'))}" autocomplete="off"></label>
-    </div>
+    <label class="field"><span>${escapeHtml(t('p.sex'))}</span>
+      <select data-f="sex"><option value="">–</option>
+        <option value="f">${escapeHtml(t('sex.f'))}</option>
+        <option value="m">${escapeHtml(t('sex.m'))}</option></select></label>
+
+    ${lifeEventHtml('birth', null)}
+    ${lifeEventHtml('death', null)}
 
     <div class="lbl" style="margin-top:20px">${escapeHtml(t('add.how'))}</div>
     <div class="linkrow">
@@ -538,13 +622,36 @@ export function openQuickAdd({ relativeOf = null } = {}) {
       <div class="ppick" data-anchor></div>
     </div>
 
+    <details class="more" data-more-fields>
+      <summary>${escapeHtml(t('add.more'))}</summary>
+      ${section('notiz', null)}
+      ${section('kopf', null)}
+      ${S.branches.length ? `<div class="lbl" style="margin-top:18px">${escapeHtml(t('card.branches'))}</div>
+      <div class="checkscroll" data-branches>${treeOrder().map(({ branch: b }) => `<label class="check">
+        <input type="checkbox" value="${b.id}">
+        <span class="tag"><span class="dot" style="background:${escapeHtml(b.color)}"></span>${
+  branchIndent(b)}${escapeHtml(b.name)}</span></label>`).join('')}</div>` : ''}
+      ${SECTIONS.filter(sec => sec.label).map(sec => `
+        <div class="lbl" style="margin-top:20px">${escapeHtml(t(sec.label))}</div>
+        ${section(sec.id, null)}`).join('')}
+    </details>
+
     <button class="btn primary wide" data-save style="margin-top:22px">${escapeHtml(t('add.create'))}</button>
     <button class="btn wide" data-more style="margin-top:10px">${escapeHtml(t('add.create_more'))}</button>
     <div class="muted" data-added style="margin-top:10px"></div>`;
 
   openSheet(t('add.title'), body, {
     onMount(root) {
+      mountFuzzyDates(root);
       const picker = personPicker(root.querySelector('[data-anchor]'), { selected: anchor });
+      const coords = { birth: { lat: null, lon: null }, death: { lat: null, lon: null } };
+      import('./geo.js').then(geo => {
+        for (const which of ['birth', 'death']) {
+          geo.attachPlacePicker(root.querySelector(`[data-f="${which}_place"]`), {
+            onPick: hit => { coords[which] = { lat: hit?.lat ?? null, lon: hit?.lon ?? null }; },
+          });
+        }
+      });
       root.querySelector('[data-f="name"]').focus();
 
       const save = async () => {
@@ -552,7 +659,16 @@ export function openQuickAdd({ relativeOf = null } = {}) {
         if (!name) { toast(t('form.name_missing')); return null; }
         const how = val(root, 'how');
         const payload = {
-          name, sex: val(root, 'sex'), birth: val(root, 'birth').trim(),
+          name,
+          sex: val(root, 'sex'),
+          birth: val(root, 'birth').trim(),
+          birth_place: val(root, 'birth_place').trim(),
+          birth_lat: coords.birth.lat, birth_lon: coords.birth.lon,
+          death: val(root, 'death').trim(),
+          death_place: val(root, 'death_place').trim(),
+          death_lat: coords.death.lat, death_lon: coords.death.lon,
+          ...(root.querySelector('[data-branches]') ? { branches: checked(root, '[data-branches] input') } : {}),
+          ...readFields(root),
           ...(how && picker.value ? { connect: { type: how, id: picker.value } } : {}),
         };
         try {
@@ -566,13 +682,21 @@ export function openQuickAdd({ relativeOf = null } = {}) {
         const id = await save();
         if (id) { closeSheet(); openPerson(id); }
       };
+      // Add-another keeps what a run of siblings shares — the relation, the
+      // branches, the places — and clears only what is about one person.
+      // Retyping the same village forty times is the hassle, not the typing.
       root.querySelector('[data-more]').onclick = async () => {
+        const name = val(root, 'name').trim();
         const id = await save();
         if (!id) return;
-        const added = root.querySelector('[data-added]');
-        added.textContent = `✓ ${val(root, 'name').trim()}`;
+        root.querySelector('[data-added]').textContent = `✓ ${name}`;
         root.querySelector('[data-f="name"]').value = '';
-        root.querySelector('[data-f="birth"]').value = '';
+        root.querySelector('[data-f="sex"]').value = '';
+        for (const box of root.querySelectorAll('[data-fdate]')) {
+          box.querySelectorAll('[data-fd="y"], [data-fd="raw"]').forEach(el => { el.value = ''; });
+          box.querySelectorAll('select[data-fd="m"], select[data-fd="d"]').forEach(el => { el.value = ''; });
+          box.querySelector('[data-fd="kind"]').dispatchEvent(new Event('change'));
+        }
         root.querySelector('[data-f="name"]').focus();
       };
     },
@@ -592,12 +716,8 @@ export function openUnionForm(unionId) {
     <label class="field"><span>${escapeHtml(t('union.kind'))}</span>
       <select data-f="kind">${UNION_KINDS.map(k =>
         `<option value="${k}" ${u.kind === k ? 'selected' : ''}>${escapeHtml(t('union.' + k))}</option>`).join('')}</select></label>
-    <div class="two">
-      <label class="field"><span>${escapeHtml(t('union.started'))}</span>
-        <input data-f="started" value="${escapeHtml(u.started || '')}" placeholder="${escapeHtml(t('form.fuzzy_ph'))}" autocomplete="off"></label>
-      <label class="field"><span>${escapeHtml(t('union.ended'))}</span>
-        <input data-f="ended" value="${escapeHtml(u.ended || '')}" placeholder="${escapeHtml(t('form.fuzzy_ph'))}" autocomplete="off"></label>
-    </div>
+    ${fuzzyDateHtml('started', u.started || '', { label: t('union.started') })}
+    ${fuzzyDateHtml('ended', u.ended || '', { label: t('union.ended') })}
     <label class="field"><span>${escapeHtml(t('union.note'))}</span>
       <input data-f="note" value="${escapeHtml(u.note || '')}"></label>
 
@@ -623,6 +743,7 @@ export function openUnionForm(unionId) {
 
   openSheet(t('union.title'), body, {
     onMount(root) {
+      mountFuzzyDates(root);
       const exclude = [...unionPartners(unionId), ...unionChildren(unionId)];
       const picker = personPicker(root.querySelector('[data-newchild]'), { exclude });
       const partnerHost = root.querySelector('[data-newpartner]');

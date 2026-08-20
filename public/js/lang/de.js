@@ -216,6 +216,18 @@ export default {
   'add.rel_none': 'Erstmal ohne Verbindung',
   'add.create': 'Anlegen',
   'add.create_more': 'Anlegen und noch jemand',
+  'add.more': 'Mehr Angaben',
+  'fd.exact': 'Genau',
+  'fd.circa': 'Um (~)',
+  'fd.before': 'Vor (<)',
+  'fd.after': 'Nach (>)',
+  'fd.range': 'Zeitraum',
+  'fd.text': 'Freitext',
+  'fd.year': 'Jahr',
+  'fd.month': 'Monat?',
+  'fd.day': 'Tag?',
+  'fd.to': 'bis',
+  'fd.raw_ph': 'z. B. Ostern 1885',
 
   // Union form
   'union.title': 'Verbindung',
