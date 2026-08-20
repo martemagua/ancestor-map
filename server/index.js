@@ -279,6 +279,8 @@ on('GET', '/api/export', 'admin', ctx => {
 on('POST', '/api/import', 'admin', ctx => R.importAll(ctx.body.data || ctx.body, { replace: ctx.body.replace === true }));
 on('GET', '/api/backups', 'admin', () => listBackups());
 on('POST', '/api/backups', 'admin', () => runBackup('manual'));
+on('GET', '/api/duplicates', 'admin', () => R.findDuplicates());
+on('POST', '/api/persons/merge', 'admin', ctx => R.mergePersons(ctx.body));
 
 // ---- settings ----------------------------------------------------------------
 on('GET', '/api/settings', 'viewer', () => ({

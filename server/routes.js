@@ -819,6 +819,98 @@ function insertRows(table, rows, { replace = true } = {}) {
   }
 }
 
+// ---------------------------------------------------------------- merge & duplicates
+
+const normName = s => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+/**
+ * Likely duplicates, for the admin page — a GEDCOM import's best friend.
+ * Same normalised name, and birth years that don't contradict each other.
+ */
+export function findDuplicates() {
+  const groups = new Map();
+  for (const p of db.prepare('SELECT id, name, birth, birth_year FROM persons WHERE archived=0').all()) {
+    const key = normName(p.name);
+    if (!key) continue;
+    (groups.get(key) || groups.set(key, []).get(key)).push(p);
+  }
+  const out = [];
+  for (const [, list] of groups) {
+    if (list.length < 2) continue;
+    const years = list.map(p => p.birth_year).filter(y => y != null);
+    // Two people of one name born decades apart are a grandfather and his
+    // grandson, not a duplicate.
+    if (years.length >= 2 && Math.max(...years) - Math.min(...years) > 5) continue;
+    out.push(list.map(p => ({ id: p.id, name: p.name, birth: p.birth, birth_year: p.birth_year })));
+  }
+  return out;
+}
+
+/**
+ * Fold `drop` into `keep`: every union seat, child edge, relationship,
+ * branch, field, story and source link moves over — keep's own rows win a
+ * collision — and the account that pointed at `drop` follows. One
+ * transaction, and the ancestor-ring guard runs on every union that gained
+ * a member, so a merge cannot smuggle in the shape the forms refuse.
+ */
+export function mergePersons({ keep, drop }) {
+  const keepId = Number(keep), dropId = Number(drop);
+  if (!keepId || !dropId || keepId === dropId) throw bad('err.invalid');
+  if (!personExists(keepId) || !personExists(dropId)) throw bad('err.person_missing');
+
+  return tx(() => {
+    db.prepare('UPDATE OR IGNORE union_partners SET person_id=? WHERE person_id=?').run(keepId, dropId);
+    db.prepare('UPDATE OR IGNORE children SET child_id=? WHERE child_id=?').run(keepId, dropId);
+    // A union where keep would now be partner and child at once is the merge
+    // telling us these two were never the same person.
+    const clash = db.prepare(`SELECT 1 FROM union_partners up JOIN children c
+      ON c.union_id = up.union_id AND c.child_id = up.person_id WHERE up.person_id=?`).get(keepId);
+    if (clash) throw bad('err.child_is_partner');
+
+    for (const r of db.prepare('SELECT * FROM relationships WHERE a_id=? OR b_id=?').all(dropId, dropId)) {
+      const other = r.a_id === dropId ? r.b_id : r.a_id;
+      db.prepare('DELETE FROM relationships WHERE id=?').run(r.id);
+      if (other === keepId) continue;
+      const [a, b] = pair(keepId, other);
+      db.prepare(`INSERT INTO relationships (a_id,b_id,kind,label) VALUES (?,?,?,?)
+        ON CONFLICT(a_id,b_id) DO NOTHING`).run(a, b, r.kind, r.label);
+    }
+
+    db.prepare('UPDATE OR IGNORE person_branches SET person_id=? WHERE person_id=?').run(keepId, dropId);
+    db.prepare('UPDATE OR IGNORE person_fields SET person_id=? WHERE person_id=?').run(keepId, dropId);
+    db.prepare('UPDATE OR IGNORE story_people SET person_id=? WHERE person_id=?').run(keepId, dropId);
+    db.prepare(`UPDATE OR IGNORE source_links SET subject_id=? WHERE subject_type='person' AND subject_id=?`)
+      .run(keepId, dropId);
+    // subject_id carries no foreign key, so leftovers from the OR IGNORE
+    // above would keep pointing at the deleted person — sweep them by hand.
+    db.prepare(`DELETE FROM source_links WHERE subject_type='person' AND subject_id=?`).run(dropId);
+    db.prepare('UPDATE users SET person_id=? WHERE person_id=?').run(keepId, dropId);
+
+    // Structural facts fill gaps only — the kept person's answers stand.
+    const kept = personById(keepId), gone = personById(dropId);
+    const fill = {};
+    for (const col of ['sex', 'birth', 'death', 'birth_place', 'death_place',
+      'birth_lat', 'birth_lon', 'death_lat', 'death_lon']) {
+      if ((kept[col] === '' || kept[col] == null) && gone[col] !== '' && gone[col] != null) fill[col] = gone[col];
+    }
+    if (Object.keys(fill).length) {
+      fill.birth_year = sortYear(fill.birth ?? kept.birth);
+      fill.death_year = sortYear(fill.death ?? kept.death);
+      const cols = Object.keys(fill);
+      db.prepare(`UPDATE persons SET ${cols.map(c => `${c}=?`).join(',')} WHERE id=?`)
+        .run(...cols.map(c => fill[c]), keepId);
+    }
+
+    const touched = db.prepare('SELECT union_id FROM union_partners WHERE person_id=?').all(keepId);
+    db.prepare('DELETE FROM persons WHERE id=?').run(dropId);
+    sweepEmptyUnions();
+    for (const { union_id } of touched) {
+      if (unionExists(union_id)) assertNoAncestorRing(union_id);
+    }
+    return { ok: true, kept: keepId };
+  });
+}
+
 // ---------------------------------------------------------------- upcoming
 
 /**

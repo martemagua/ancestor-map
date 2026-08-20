@@ -51,6 +51,8 @@ test('an editor writes the family but does not run the installation', async () =
   assert.equal((await S.POST('/api/import', { format: 'x' })).status, 403);
   assert.equal((await S.POST('/api/invites', { role: 'viewer' })).status, 403);
   assert.equal((await S.POST('/api/settings/map', { tile_url: '' })).status, 403);
+  assert.equal((await S.GET('/api/duplicates')).status, 403);
+  assert.equal((await S.POST('/api/persons/merge', { keep: 1, drop: 2 })).status, 403);
 });
 
 test('roles cannot be self-served and the last admin stands', async () => {

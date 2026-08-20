@@ -294,6 +294,29 @@ test('geo search answers short queries locally and tiles validate coordinates', 
   assert.equal(bad.status, 404);
 });
 
+test('duplicates are found and merging folds one person into the other', async () => {
+  S.logoutLocally();
+  await S.POST('/api/login', { username: 'alex', password: 'secret-enough' });
+  const keep = (await S.POST('/api/persons', { name: 'Dora Dup', birth: '1900' })).data.id;
+  const drop = (await S.POST('/api/persons', { name: 'dora dup', birth: '~1901', occupation: 'Weberin' })).data.id;
+  await S.POST('/api/relationships', { a_id: drop, b_id: id.ze, kind: 'freunde', label: 'Nachbarin' });
+
+  const dups = (await S.GET('/api/duplicates')).data;
+  const group = dups.find(g => g.some(p => p.id === keep));
+  assert.ok(group && group.some(p => p.id === drop), 'the pair is spotted');
+
+  const merged = await S.POST('/api/persons/merge', { keep, drop });
+  assert.equal(merged.status, 200);
+
+  const graph = (await S.GET('/api/graph')).data;
+  assert.ok(!graph.persons.some(p => p.id === drop), 'the duplicate is gone');
+  const kept = graph.persons.find(p => p.id === keep);
+  assert.equal(kept.occupation, 'Weberin', 'their record filled the gaps');
+  assert.ok(graph.relationships.some(r =>
+    (r.a_id === keep && r.b_id === id.ze) || (r.a_id === id.ze && r.b_id === keep)),
+  'their connections moved over');
+});
+
 test('login answers are rate-limited only on failures', async () => {
   for (let i = 0; i < 3; i++) {
     const ok = await S.POST('/api/login', { username: 'duda', password: 'senha-segura' });

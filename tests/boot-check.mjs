@@ -56,6 +56,20 @@ try {
   await page.click('.sheet [data-save]');
   await page.waitForSelector('.sheet.show .phead', { timeout: 5000 });
 
+  // The admin page: create an invite and walk its link to the join form.
+  await page.goto(`${BASE}/admin`);
+  await page.waitForSelector('#admin header h1');
+  await page.click('[data-invite]');
+  await page.waitForSelector('[data-invitelink] input');
+  const inviteLink = await page.inputValue('[data-invitelink] input');
+  await page.goto(inviteLink);
+  await page.waitForSelector('[data-go]');
+  await page.fill('[data-u]', 'gast');
+  await page.fill('[data-p]', 'gast-passwort-1');
+  await page.fill('[data-n]', 'Gast Test');
+  await page.click('[data-go]');
+  await page.waitForSelector('#app:not(.hidden)', { timeout: 5000 });
+
   await browser.close();
   if (errors.length) {
     console.error('CONSOLE ERRORS:\n' + errors.join('\n'));
