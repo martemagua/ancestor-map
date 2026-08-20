@@ -100,35 +100,80 @@ function radiusOf(p) {
 // Pure functions of the graph — no canvas, no camera — which is what
 // tests/layout.test.js checks.
 
+const GENERATION = 28;          // years, the usual rough step between two
+
+const median = xs => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+
+/** Structural links to anybody else on the chart — how attached someone is. */
+const linkCount = (id, shown) =>
+  [...parentsOfP(id), ...childrenOfP(id), ...spousesOfP(id)].filter(o => shown.has(o)).length;
+
 /**
  * Signed generations, walked out from the proband: a parent is +1, a child
  * −1, a partner ±0. First visit wins — a marriage across generations keeps
  * the reading closest to the proband, which is the honest choice when the
  * graph genuinely disagrees with itself.
+ *
+ * Anybody the proband cannot be reached from is walked the same way, from
+ * their own best-attached member. They have to be: dropping everyone the
+ * walk missed onto row 0 drew a grandmother, her son and her grandson side
+ * by side as though they were siblings — which is not a gap in the picture,
+ * it is the picture saying something false. And it is the normal state of a
+ * family halfway through being typed in, before the marriage that joins it
+ * to the rest has been recorded.
+ *
+ * Where such a family sits vertically is a guess, so it is made from the
+ * one piece of evidence there is: birth years against the proband's, a
+ * generation being about 28 years. With no years to go on the island is
+ * simply hung from its own seed, internally right and no claim made.
  */
 export function indexGenerations(people) {
   const shown = new Set(people.map(p => p.id));
   for (const p of people) p._gen = null;
-  const start = S.personById[S.probandId];
-  if (!start) { for (const p of people) p._gen = 0; return; }
-  start._gen = 0;
-  const queue = [start];
-  while (queue.length) {
-    const cur = queue.shift();
-    const steps = [
-      ...parentsOfP(cur.id).map(id => [id, cur._gen + 1]),
-      ...childrenOfP(cur.id).map(id => [id, cur._gen - 1]),
-      ...spousesOfP(cur.id).map(id => [id, cur._gen]),
-    ];
-    for (const [id, gen] of steps) {
-      if (!shown.has(id)) continue;
-      const next = S.personById[id];
-      if (!next || next._gen !== null) continue;
-      next._gen = gen;
-      queue.push(next);
+
+  const walk = seed => {
+    seed._gen = 0;
+    const island = [seed];
+    const queue = [seed];
+    while (queue.length) {
+      const cur = queue.shift();
+      const steps = [
+        ...parentsOfP(cur.id).map(id => [id, cur._gen + 1]),
+        ...childrenOfP(cur.id).map(id => [id, cur._gen - 1]),
+        ...spousesOfP(cur.id).map(id => [id, cur._gen]),
+      ];
+      for (const [id, gen] of steps) {
+        if (!shown.has(id)) continue;
+        const next = S.personById[id];
+        if (!next || next._gen !== null) continue;
+        next._gen = gen;
+        island.push(next);
+        queue.push(next);
+      }
     }
+    return island;
+  };
+
+  const start = S.personById[S.probandId];
+  if (start && shown.has(start.id)) walk(start);
+
+  const home = start?.birth_year ?? null;
+  let rest = people.filter(p => p._gen === null);
+  while (rest.length) {
+    // The best-attached person anchors their own family; ties go to the
+    // lowest id so the chart does not rearrange itself between reloads.
+    const seed = rest.reduce((best, p) =>
+      (linkCount(p.id, shown) > linkCount(best.id, shown) ? p : best), rest[0]);
+    const island = walk(seed);
+    const guesses = home === null ? [] : island
+      .filter(p => p.birth_year != null)
+      .map(p => Math.round((home - p.birth_year) / GENERATION) - p._gen);
+    if (guesses.length) {
+      const shift = median(guesses);
+      for (const p of island) p._gen += shift;
+    }
+    rest = people.filter(p => p._gen === null);
   }
-  for (const p of people) if (p._gen === null) p._gen = 0;
 }
 
 /** The generation row's Y. Ancestors up (negative y), descendants down. */

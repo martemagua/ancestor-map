@@ -78,6 +78,46 @@ test('generations walk out signed from the proband', () => {
   assert.equal(gen(21), 0, 'unreached people default to the proband row');
 });
 
+// A family typed in but not yet joined to the rest — the normal state of an
+// evening's work, and permanent for a branch researched on its own.
+function withIsland({ years = false } = {}) {
+  fixture();
+  const island = [
+    { id: 30, name: 'Insel-Oma', birth_year: years ? 1901 : null },
+    { id: 31, name: 'Insel-Sohn', birth_year: years ? 1930 : null },
+    { id: 32, name: 'Insel-Enkel', birth_year: years ? 1958 : null },
+  ].map(p => ({ branches: [], archived: 0, ...p }));
+  S.persons.push(...island);
+  S.unions.push({ id: 200, kind: 'ehe' }, { id: 201, kind: 'ehe' });
+  S.union_partners.push({ union_id: 200, person_id: 30 }, { union_id: 201, person_id: 31 });
+  S.children.push({ union_id: 200, child_id: 31 }, { union_id: 201, child_id: 32 });
+  reindex();
+  indexGenerations(S.persons);
+  return S.persons;
+}
+
+test('a family not yet joined to the rest keeps its own generations', () => {
+  withIsland();
+  const gen = id => S.personById[id]._gen;
+  // Dropping everyone the walk missed onto row 0 drew a grandmother, her son
+  // and her grandson side by side as though they were siblings.
+  assert.equal(gen(30) - gen(31), 1, 'the mother is one row above her son');
+  assert.equal(gen(31) - gen(32), 1, 'and he one above his own son');
+  assert.equal(gen(31), 0, 'hung from its best-attached member, nothing claimed');
+  // Someone attached to nobody at all still has nothing to say for themselves.
+  assert.equal(gen(21), 0, 'Zé stays on the proband row');
+});
+
+test('an unjoined family is placed by its birth years when it has them', () => {
+  withIsland({ years: true });
+  const gen = id => S.personById[id]._gen;
+  // Born 1901 against a proband born 1949: about two generations up, so she
+  // lands beside the people she actually belongs beside rather than at 0.
+  assert.equal(gen(30), 2, 'the 1901 grandmother sits with the grandparents');
+  assert.equal(gen(31), 1);
+  assert.equal(gen(32), 0);
+});
+
 test('the proband switch re-reads the rows', () => {
   const people = fixture();
   S.probandId = 3;                       // Wilhelm's tree now

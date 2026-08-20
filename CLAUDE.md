@@ -80,6 +80,13 @@ nodes.
 - Kinship ("your great-aunt", "cousin twice removed") is computed by
   `public/js/kinship.js` from the union graph relative to the current
   proband — never stored. Same for generations.
+- **A family not joined to the rest is walked on its own.** `indexGenerations`
+  BFSes from the proband, then seeds every remaining component from its
+  best-attached member and walks that too, shifting the whole island by its
+  birth years against the proband's (a generation ≈ 28 years) when it has
+  any. Dropping everyone the first walk missed onto row 0 drew a grandmother
+  beside her grandson as though they were siblings — and that is the normal
+  state of a family halfway through being typed in.
 - **Where everybody stands is computed, not stored.** `public/js/layout.js`
   assigns every X from the graph on each relayout; `persons.x/y` are legacy
   columns kept only so an old backup still restores. The one thing a person
