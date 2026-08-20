@@ -210,14 +210,18 @@ export function openStory(id) {
   });
 }
 
-export function openStoryForm(s = null, presetPeople = []) {
+export function openStoryForm(s = null, presetPeople = [], { kind = '' } = {}) {
   const chosen = new Set(s ? s.people : presetPeople);
   const body = `
     <label class="field"><span>${escapeHtml(t('story.title_label'))}</span>
       <input data-f="title" value="${escapeHtml(s?.title || '')}"></label>
     <label class="field"><span>${escapeHtml(t('story.kind'))}</span>
-      <select data-f="kind">${STORY_KINDS.map(k =>
-        `<option value="${k.id}" ${s?.kind === k.id ? 'selected' : ''}>${k.icon} ${escapeHtml(t('sk.' + k.id))}</option>`).join('')}</select></label>
+      <select data-f="kind">
+        ${['life', 'story'].map(group => `<optgroup label="${escapeHtml(t('sk.group_' + group))}">${
+    STORY_KINDS.filter(k => Boolean(k.life) === (group === 'life')).map(k =>
+      `<option value="${k.id}" ${(s?.kind || kind) === k.id ? 'selected' : ''}>${k.icon} ${escapeHtml(t('sk.' + k.id))}</option>`).join('')
+  }</optgroup>`).join('')}
+      </select></label>
     ${fuzzyDateHtml('date', s?.date ?? todayISO(), { label: t('story.when') })}
     <label class="field"><span>${escapeHtml(t('story.where'))}</span>
       <input data-f="place" value="${escapeHtml(s?.place || '')}" autocomplete="off"></label>

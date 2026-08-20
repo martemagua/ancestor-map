@@ -540,3 +540,29 @@ p.warn{
 .ppick-chosen .nm{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .ppick-chosen .x{flex:none; color:var(--ink-3); font-size:17px}
 .ppick-chosen:disabled{opacity:1; cursor:default}
+
+/* A life in order: the person's own dates, their marriages and every
+   Geschichte they appear in, on one spine. */
+.timeline{list-style:none; margin:0; padding:0}
+.timeline li{position:relative; padding-left:16px}
+.timeline li::before{
+  content:""; position:absolute; left:4px; top:0; bottom:0; width:1px; background:var(--line-2);
+}
+.timeline li:first-child::before{top:14px}
+.timeline li:last-child::before{bottom:auto; height:14px}
+.tl-row{
+  display:flex; align-items:baseline; gap:9px; width:100%; text-align:left;
+  padding:7px 0; color:inherit; font:inherit;
+}
+button.tl-row{cursor:pointer}
+button.tl-row:hover .tl-what b{color:var(--accent)}
+.tl-year{
+  flex:0 0 3.2em; font-family:var(--mono); font-size:12px; color:var(--ink-3);
+  font-variant-numeric:tabular-nums;
+}
+.tl-icon{
+  flex:none; width:20px; text-align:center; font-size:13px;
+  background:var(--card); position:relative; left:-15px; margin-right:-15px;
+}
+.tl-what{flex:1; min-width:0; font-size:14.5px}
+.tl-what b{font-weight:600; display:block; line-height:1.3}

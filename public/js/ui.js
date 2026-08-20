@@ -7,12 +7,12 @@ import {
   branchesWithParents, ancestorsOf, treeOrder, suggestBranchColor, lighten,
   parentsOfP, siblingsOfP, unionsOfP, unionPartners, unionChildren,
   kinLabel, relsOf, otherEnd, otherViewsOf, lifespan, buildLabel, branchPalette,
-  UNION_ENDINGS, LIVING, relLabelFor,
+  UNION_ENDINGS, LIVING, relLabelFor, storyKind,
 } from './store.js';
 import {
   FIELDS, SECTIONS, fieldsIn, fromStored, toStored, isEmpty, fieldApplies, isDeceased,
 } from './fields.js';
-import { formatFuzzy, composeFuzzy, toParts } from './fuzzydate.js';
+import { formatFuzzy, composeFuzzy, toParts, sortYear as sortYearOf } from './fuzzydate.js';
 import { t, LANGS, LANG_NAMES, getLang } from './i18n.js';
 
 let refresh = async () => {};
@@ -327,6 +327,49 @@ const storiesOf = personId => (S.stories || [])
   .sort((a, b) => (a.year ?? 9999) - (b.year ?? 9999));
 
 /**
+ * One life, in order: the facts the person record holds, the marriages, and
+ * every Geschichte they appear in, merged and sorted by year.
+ *
+ * The point of widening the story kinds was to stop inventing a person field
+ * for every dated fact — but that only pays off if the card reads them back
+ * as a life rather than as a separate list below the facts. Structural
+ * entries carry no id and are not clickable; the recorded ones open.
+ */
+function timelineOf(person) {
+  const id = person.id;
+  const out = [];
+  // The year already stands in its own column, so a date that says nothing
+  // more than the year says nothing twice.
+  const detail = date => {
+    const shown = formatFuzzy(date);
+    return shown === String(sortYearOf(date)) ? '' : shown;
+  };
+  const at = (date, icon, label, place) => {
+    if (!date) return;
+    out.push({ year: sortYearOf(date), icon, label, when: detail(date), place });
+  };
+  at(person.birth, '👶', t('p.birth'), person.birth_place);
+  at(person.baptism, '💧', t('f.baptism'), '');
+  for (const uid of unionsOfP(id)) {
+    const u = S.unionById[uid];
+    if (!u) continue;
+    const who = unionPartners(uid).filter(x => x !== id).map(x => S.personById[x]?.name).filter(Boolean);
+    at(u.started, '💒', [t('union.' + u.kind), who.join(' & ')].filter(Boolean).join(' · '), '');
+    // An ending only reads as an event when something says how it ended —
+    // a date alone next to a marriage is ambiguous about which one it is.
+    if (u.ended_reason) at(u.ended, '💔', t('end.' + u.ended_reason), '');
+  }
+  at(person.death, '🖤', t('p.death'), person.death_place);
+  for (const s of storiesOf(id)) {
+    out.push({
+      year: s.year, icon: storyKind(s.kind).icon, label: s.title,
+      when: detail(s.date), place: s.place, story: s.id,
+    });
+  }
+  return out.sort((a, b) => (a.year ?? 9999) - (b.year ?? 9999));
+}
+
+/**
  * What the other accounts wrote, where it differs from what you see — the
  * footnote on a card, marked with one small figure; the name is on the icon.
  */
@@ -370,6 +413,7 @@ export function openPerson(id) {
   })).filter(x => x.u);
   const siblings = siblingsOfP(id).map(x => S.personById[x]).filter(Boolean);
   const rels = relsOf(id);
+  const timeline = timelineOf(p);
   const branches = branchesWithParents(p).map(bid => S.branchById[bid]).filter(Boolean);
 
   const personRow = (o, sub = '') => `
@@ -448,15 +492,24 @@ export function openPerson(id) {
       ${canEdit() ? `<button class="btn sm" data-connect style="margin-top:10px">+ ${escapeHtml(t('card.connect'))}</button>` : ''}
     </div>` : ''}
 
-    ${storiesOf(id).length || canEdit() ? `
+    ${timeline.length || canEdit() ? `
     <div class="card">
-      <h3>${escapeHtml(t('card.stories'))}</h3>
-      ${storiesOf(id).map(s => `<button class="relrow" data-openstory="${s.id}"><span class="relmain">
-        <span class="kind">${escapeHtml(s.year != null ? String(s.year) : '·')}</span>
-        <span class="nm">${escapeHtml(s.title)}
-        <span class="via">${escapeHtml([formatFuzzy(s.date), s.place].filter(Boolean).join(' · '))}</span></span>
-      </span></button>`).join('')}
-      ${canEdit() ? `<button class="btn sm" data-newstory style="margin-top:10px">+ ${escapeHtml(t('story.new'))}</button>` : ''}
+      <h3>${escapeHtml(t('card.timeline'))}</h3>
+      <ol class="timeline">
+        ${timeline.map(e => {
+    const inner = `<span class="tl-year">${escapeHtml(e.year != null ? String(e.year) : '·')}</span>
+          <span class="tl-icon">${e.icon}</span>
+          <span class="tl-what"><b>${escapeHtml(e.label)}</b>
+            <span class="via">${escapeHtml([e.when, e.place].filter(Boolean).join(' · '))}</span></span>`;
+    return `<li>${e.story
+      ? `<button class="tl-row" data-openstory="${e.story}">${inner}</button>`
+      : `<span class="tl-row">${inner}</span>`}</li>`;
+  }).join('')}
+      </ol>
+      ${canEdit() ? `<div class="btnrow" style="margin-top:10px">
+        <button class="btn sm" data-newevent>+ ${escapeHtml(t('card.add_event'))}</button>
+        <button class="btn sm" data-newstory>+ ${escapeHtml(t('story.new'))}</button>
+      </div>` : ''}
     </div>` : ''}
 
     ${branches.length ? `<div class="card"><h3>${escapeHtml(t('card.branches'))}</h3>
@@ -490,6 +543,8 @@ export function openPerson(id) {
       });
       root.querySelector('[data-newstory]')?.addEventListener('click', () =>
         import('./views.js').then(m => m.openStoryForm(null, [id])));
+      root.querySelector('[data-newevent]')?.addEventListener('click', () =>
+        import('./views.js').then(m => m.openStoryForm(null, [id], { kind: 'umzug' })));
       const pin = root.querySelector('[data-pin]');
       if (pin) {
         pin.onclick = async () => {
