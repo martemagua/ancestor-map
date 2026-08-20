@@ -124,6 +124,30 @@ try {
     if (!painted) throw new Error('tree canvas is blank');
   });
 
+  // Somebody else's perspective is a place you visit, not a state you can
+  // get stuck in: the × comes home, and so does opening the app again.
+  await step("another perspective is a visit, and × comes home", async () => {
+    const me = await page.evaluate(async () => (await import('/js/store.js')).S.mePersonId);
+    await page.click('#tabbar [data-tab="people"]');
+    await page.click('#people-list .prow:has-text("Wilhelm Probe")');
+    await page.waitForSelector('.sheet.show .phead');
+    await page.click('.sheet.show [data-treefrom]');
+    const away = await page.evaluate(async () => (await import('/js/store.js')).S.probandId);
+    if (away === me) throw new Error('the tree did not move to the other perspective');
+
+    await page.click('#proband button');
+    const home = await page.evaluate(async () => (await import('/js/store.js')).S.probandId);
+    if (home !== me) throw new Error(`× left the tree on ${home}, not on you (${me})`);
+    const stillOffered = await page.evaluate(() =>
+      document.querySelector('#proband button').textContent.includes('×'));
+    if (stillOffered) throw new Error('the chip still offers a way home while already home');
+
+    await page.reload();
+    await page.waitForSelector('#app:not(.hidden)');
+    const fresh = await page.evaluate(async () => (await import('/js/store.js')).S.probandId);
+    if (fresh !== me) throw new Error(`opening the app read the tree from ${fresh}, not from you`);
+  });
+
   // The force-simulation build wrote coordinates into persons.x/y. They
   // describe an arrangement that no longer exists, so a chart that starts
   // people from them opens as a heap and only tidies itself once something

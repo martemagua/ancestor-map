@@ -213,9 +213,11 @@ async function refreshAll() {
  * not you, tapping it walks back home. Kinship labels, generations on the
  * map and the card's relation line all recompute from this one value.
  */
-function setProband(id) {
+function setProband(id, { pinned = true } = {}) {
   S.probandId = id;
-  S.probandPinned = true;          // a deliberate choice outranks the default
+  // A deliberate choice outranks the default; stepping back out of one hands
+  // the tree to the default again, which is you.
+  S.probandPinned = pinned;
   S.persons.forEach(p => { p._gen = undefined; });   // the layout re-derives
   renderProband();
   renderPeople();
@@ -228,12 +230,15 @@ function renderProband() {
   const p = proband();
   if (!p) { host.hidden = true; return; }
   const isMe = p.id === S.mePersonId;
+  // The × is a promise that there is a way back. An account with no person
+  // of its own has no view to return to, so it does not get offered one.
+  const canReset = !isMe && Boolean(S.personById[S.mePersonId]);
   host.hidden = false;
   host.innerHTML = `<button class="chip ${isMe ? 'on' : 'lit'}" style="--c:var(--accent)"
-    title="${escapeHtml(isMe ? t('prob.you_hint') : t('prob.reset'))}">🌳 ${escapeHtml(p.name)}${isMe ? '' : ' ×'}</button>`;
+    title="${escapeHtml(canReset ? t('prob.reset') : t('prob.you_hint'))}">🌳 ${escapeHtml(p.name)}${canReset ? ' ×' : ''}</button>`;
   host.querySelector('button').onclick = () => {
-    if (!isMe && S.personById[S.mePersonId]) setProband(S.mePersonId);
-    else if (p) { openPerson(p.id); }
+    if (canReset) setProband(S.mePersonId, { pinned: false });
+    else openPerson(p.id);
   };
 }
 
