@@ -387,7 +387,32 @@ function sweepEmptyUnions() {
     AND id NOT IN (SELECT union_id FROM children)`).run();
 }
 
-/** The map's debounced position writes: [{id,x,y}]. */
+/**
+ * Where people stand within their generation, after somebody dragged one of
+ * them: [{id, key}] for the whole row. The layout computes everything else,
+ * so this is the one arrangement worth remembering — and clearing it hands
+ * that generation back to the automatic tidy pass.
+ */
+export function saveOrder(body) {
+  const rows = Array.isArray(body) ? body : body.order;
+  if (!Array.isArray(rows)) throw bad('err.invalid');
+  const put = db.prepare('UPDATE persons SET order_key=? WHERE id=?');
+  return tx(() => {
+    for (const row of rows) {
+      const key = Number(row.key);
+      put.run(Number.isFinite(key) ? key : null, Number(row.id));
+    }
+    return { ok: true, saved: rows.length };
+  });
+}
+
+export function clearOrder() {
+  db.prepare('UPDATE persons SET order_key=NULL').run();
+  return { ok: true };
+}
+
+/** The map's debounced position writes: [{id,x,y}]. Legacy — the tidy layout
+ * computes positions now; kept so an older client cannot 404 mid-session. */
 export function savePositions(body) {
   const rows = Array.isArray(body) ? body : body.positions;
   if (!Array.isArray(rows)) throw bad('err.invalid');

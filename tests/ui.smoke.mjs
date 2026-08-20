@@ -124,6 +124,38 @@ try {
     if (!painted) throw new Error('tree canvas is blank');
   });
 
+  // Dragging someone is meant to lift them right out of the chart — sideways
+  // and up and down both — and then drop them back onto their own row. The
+  // modules are pulled in by the same URL the app loaded them from, so this
+  // reads the very state the canvas is drawing.
+  await step('a dragged person lifts free and snaps back to their row', async () => {
+    const id = await page.evaluate(async () => {
+      const { S } = await import('/js/store.js');
+      const map = await import('/js/map.js');
+      map.setHighlight(null);
+      const p = S.persons.find(x => x.name === 'Wilhelm Probe');
+      map.focusPerson(p.id, 1.1);
+      return p.id;
+    });
+    const settled = () => page.evaluate(async i =>
+      (await import('/js/store.js')).S.personById[i].y, id);
+    await page.waitForTimeout(900);                    // the camera eases in
+    const before = await settled();
+
+    const box = await (await page.$('#map')).boundingBox();
+    const [cx, cy] = [box.x + box.width / 2, box.y + box.height / 2];
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx + 120, cy + 190, { steps: 12 });
+    const lifted = await settled();
+    if (Math.abs(lifted - before) < 40) {
+      throw new Error(`the person did not follow the finger downwards (${before} → ${lifted})`);
+    }
+    await page.mouse.up();
+    await page.waitForFunction(async ([i, y]) =>
+      Math.abs((await import('/js/store.js')).S.personById[i].y - y) < 3, [id, before], { timeout: 5000 });
+  });
+
   await step('the Zeit toggle flips the layout mode', async () => {
     await page.click('#btn-zeit');
     const on = await page.evaluate(() => document.getElementById('btn-zeit').classList.contains('on'));

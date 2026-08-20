@@ -215,6 +215,11 @@ export function ensureColumn(table, col, decl) {
   if (!cols.some(c => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${decl}`);
 }
 
+// Where somebody has dragged this person to stand within their generation.
+// NULL means "wherever the layout puts you", which is almost everyone —
+// a whole row is renumbered at once when one of them is moved by hand.
+ensureColumn('persons', 'order_key', 'REAL');
+
 export const metaGet = (k, dflt = null) =>
   (db.prepare('SELECT value FROM meta WHERE key=?').get(k) || {}).value ?? dflt;
 export const metaSet = (k, v) =>

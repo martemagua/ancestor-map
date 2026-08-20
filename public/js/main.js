@@ -5,12 +5,12 @@ import {
   escapeHtml, chipTree, withDescendants, proband, kinLabel,
 } from './store.js';
 import {
-  initMap, draw, reheat, fitView, focusPerson, setPhysics, physicsEnabled,
-  shake, setAllEdges, allEdgesShown, setLayoutMode, layoutMode,
+  initMap, draw, relayout, fitView, focusPerson, resetArrangement,
+  setAllEdges, allEdgesShown, setLayoutMode, layoutMode,
 } from './map.js';
 import {
   bindRefresh, bindFocus, bindTreeFrom, openPerson, openQuickAdd, openSettings,
-  openBranches, setTheme, toast, closeSheet, closeSheetFromBackdrop, canEdit,
+  openBranches, openLegend, setTheme, toast, closeSheet, closeSheetFromBackdrop, canEdit,
 } from './ui.js';
 import { renderPeople, renderStories, renderPlaces } from './views.js';
 import { t, setLang, detectLang } from './i18n.js';
@@ -154,7 +154,6 @@ async function startApp() {
   });
 
   fitView();
-  reheat(1);
 
   const fab = $('#fab');
   if (canEdit()) fab.onclick = () => openQuickAdd({});
@@ -165,20 +164,21 @@ async function startApp() {
     setAllEdges(!allEdgesShown());
     e.currentTarget.classList.toggle('on', allEdgesShown());
   };
-  $('#btn-shake').onclick = shake;
-  $('#btn-physics').onclick = e => {
-    const on = setPhysics(!physicsEnabled());
-    e.currentTarget.classList.toggle('on', on);
-    e.currentTarget.textContent = on ? '🧲' : '📌';
-  };
   // The tree's Y axis: generations, or the years themselves.
   $('#btn-zeit').onclick = e => {
     const mode = layoutMode() === 'zeit' ? 'gen' : 'zeit';
     setLayoutMode(mode);
     e.currentTarget.classList.toggle('on', mode === 'zeit');
-    reheat(1);
-    draw();
   };
+  // Hand every generation back to the automatic arrangement.
+  const arrange = $('#btn-arrange');
+  if (canEdit()) {
+    arrange.onclick = async () => {
+      await resetArrangement();
+      toast(t('tool.arranged'));
+    };
+  } else arrange.hidden = true;
+  $('#btn-legend').onclick = openLegend;
   $('#btn-branches').onclick = openBranches;
   $('#btn-settings').onclick = () => openSettings({ onLogout: logout });
   $('#scrim').onclick = closeSheetFromBackdrop;
@@ -215,7 +215,7 @@ function setProband(id) {
   S.persons.forEach(p => { p._gen = undefined; });   // the layout re-derives
   renderProband();
   renderPeople();
-  reheat(1);
+  relayout();
   draw();
 }
 
@@ -265,7 +265,7 @@ function renderChips() {
         S.litBranches[next === 'lit' ? 'add' : 'delete'](sub);
       }
       renderChips();
-      renderPeople(); reheat(0.4); draw();
+      renderPeople(); relayout();
     };
   });
   strip.querySelectorAll('[data-open]').forEach(btn => {
@@ -278,7 +278,7 @@ function renderChips() {
   strip.querySelector('[data-unbranched]').onclick = () => {
     S.showUnbranched = !S.showUnbranched;
     renderChips();
-    renderPeople(); reheat(0.4); draw();
+    renderPeople(); relayout();
   };
   syncChipToggle();
 }
@@ -307,7 +307,7 @@ function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.view').forEach(v => { v.hidden = v.dataset.view !== tab; });
   document.querySelectorAll('#tabbar button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
-  if (tab === 'tree') { draw(); reheat(0.3); }
+  if (tab === 'tree') { draw(); relayout(); }
   if (tab === 'people') renderPeople();
   if (tab === 'stories') renderStories();
   if (tab === 'places') renderPlaces();
