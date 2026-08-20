@@ -220,6 +220,15 @@ export function ensureColumn(table, col, decl) {
 // a whole row is renumbered at once when one of them is moved by hand.
 ensureColumn('persons', 'order_key', 'REAL');
 
+// Which end of a described relationship it points away from — the guardian,
+// the master, the mentor. NULL for the mutual kinds, which is most of them.
+// Always one of the row's own two ids; the write path drops anything else.
+ensureColumn('relationships', 'from_id', 'INTEGER REFERENCES persons(id) ON DELETE SET NULL');
+
+// How a union ended, kept apart from what it *was*: a divorced marriage was
+// still a marriage, so 'geschieden' is not a kind.
+ensureColumn('unions', 'ended_reason', "TEXT DEFAULT ''");
+
 export const metaGet = (k, dflt = null) =>
   (db.prepare('SELECT value FROM meta WHERE key=?').get(k) || {}).value ?? dflt;
 export const metaSet = (k, v) =>

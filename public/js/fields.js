@@ -26,6 +26,13 @@
  * it can parse and shows the rest verbatim) — a source that says "Ostern
  * 1885" is not forced into a lie.
  */
+import { LIVING } from './vocab.js';
+
+// Hoisted so the registry entries below can use it in their `showIf`. The
+// exported `isDeceased` is the same question asked from outside.
+const isDeceasedRaw = p =>
+  p?.living === 'verstorben' || (p?.living !== 'lebt' && Boolean(p?.death));
+
 export const FIELDS = [
   {
     key: 'notes', scope: 'ich', type: 'textarea', section: 'notiz',
@@ -78,23 +85,28 @@ export const FIELDS = [
   },
   {
     key: 'burial_place', scope: 'gemeinsam', type: 'text', section: 'leben',
+    showIf: p => isDeceasedRaw(p),
     label: 'f.burial_place', icon: '🕯', half: true,
   },
   {
     key: 'cause_of_death', scope: 'gemeinsam', type: 'text', section: 'leben',
+    showIf: p => isDeceasedRaw(p),
     label: 'f.cause_of_death', half: true,
   },
 
   {
+    showIf: p => !isDeceasedRaw(p),
     key: 'phone', scope: 'gemeinsam', type: 'text', section: 'kontakt',
     label: 'f.phone', half: true,
     link: v => `tel:${String(v).replace(/[^\d+]/g, '')}`,
   },
   {
+    showIf: p => !isDeceasedRaw(p),
     key: 'email', scope: 'gemeinsam', type: 'text', section: 'kontakt',
     label: 'f.email', half: true, link: v => `mailto:${v}`,
   },
   {
+    showIf: p => !isDeceasedRaw(p),
     key: 'website', scope: 'gemeinsam', type: 'url', section: 'kontakt',
     label: 'f.website', half: true, link: v => v,
   },
@@ -102,7 +114,34 @@ export const FIELDS = [
   // Not on the form: set by tapping the pin on a card, and personal — what you
   // want at the top of your list is nobody else's business.
   { key: 'pinned', scope: 'ich', type: 'bool', section: null, label: 'f.pinned' },
+
+  // Whether they are alive. Not derived from the death date, because you very
+  // often know somebody died without knowing when, and the fuzzy grammar has
+  // no way to say that — `~1890` is a guess, not the statement "dead". It is
+  // what the death fields hang off, and it is a fact in its own right.
+  {
+    key: 'living', scope: 'gemeinsam', type: 'choice', section: null,
+    label: 'f.living', choices: LIVING, choiceKey: 'living.',
+  },
 ];
+
+/**
+ * Should this field be on the form, given what the person already says?
+ *
+ * The rule that makes hiding safe: **a field holding a value is always
+ * shown**, whatever the condition answers. Otherwise one wrong tap on "lebt"
+ * puts a recorded cause of death somewhere invisible and unreachable, which
+ * is far worse than a longer form. Hiding may only ever affect empty fields.
+ */
+export function fieldApplies(field, person) {
+  if (!field.showIf) return true;
+  const raw = person ? person[field.key] : undefined;
+  if (!isEmpty(field, raw)) return true;
+  return Boolean(field.showIf(person || {}));
+}
+
+/** Are they recorded as dead — by the switch, or by any date that says so. */
+export const isDeceased = isDeceasedRaw;
 
 export const FIELD_KEYS = FIELDS.map(f => f.key);
 export const fieldOf = key => FIELDS.find(f => f.key === key) || null;

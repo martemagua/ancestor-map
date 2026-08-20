@@ -268,6 +268,61 @@ test('an existing person is placed in the tree through /connect', async () => {
   assert.equal((await S.POST(`/api/persons/${opa.id}/connect`, { type: 'nonsense', id: 1 })).status, 400);
 });
 
+test('a directed relationship remembers which end it points away from', async () => {
+  const g = (await S.GET('/api/graph')).data;
+  const opa = g.persons.find(p => p.name === 'Conn Opa');
+  const tante = g.persons.find(p => p.name === 'Conn Tante');
+
+  // A guardian and a ward are not interchangeable, so the row keeps a side.
+  await S.POST('/api/relationships', {
+    a_id: opa.id, b_id: tante.id, kind: 'vormund', from_id: opa.id,
+  });
+  const find = async () => (await S.GET('/api/relationships')).data
+    .find(r => [r.a_id, r.b_id].includes(opa.id) && [r.a_id, r.b_id].includes(tante.id));
+  assert.equal((await find()).from_id, opa.id, 'the guardian is remembered');
+
+  // Turning it into a mutual kind must not leave the direction behind, or a
+  // card would later read a stale side into a relationship that has none.
+  await S.PUT(`/api/relationships/${(await find()).id}`, { kind: 'freunde' });
+  assert.equal((await find()).from_id, null, 'a mutual kind carries no direction');
+
+  // A direction naming somebody outside the pair is meaningless — dropped.
+  const mutter = g.persons.find(p => p.name === 'Conn Mutter');
+  await S.POST('/api/relationships', {
+    a_id: opa.id, b_id: tante.id, kind: 'lehrherr', from_id: mutter.id,
+  });
+  assert.equal((await find()).from_id, null, 'a stranger cannot be one of the two ends');
+
+  // Twins are mutual by nature, and a direction on them is simply ignored.
+  await S.POST('/api/relationships', {
+    a_id: opa.id, b_id: tante.id, kind: 'zwilling', from_id: opa.id,
+  });
+  const twins = await find();
+  assert.equal(twins.kind, 'zwilling');
+  assert.equal(twins.from_id, null, 'being twins is the same fact from both sides');
+});
+
+test('a union records how it ended, apart from what it was', async () => {
+  const u = (await S.POST('/api/unions', {
+    partners: [id.karl, id.otto], kind: 'ehe', started: '1948', ended: '1961',
+    ended_reason: 'geschieden',
+  })).data;
+  let row = (await S.GET('/api/graph')).data.unions.find(x => x.id === u.id);
+  assert.equal(row.kind, 'ehe', 'a divorced marriage was still a marriage');
+  assert.equal(row.ended_reason, 'geschieden');
+
+  await S.PUT(`/api/unions/${u.id}`, { ended_reason: 'verwitwet' });
+  row = (await S.GET('/api/graph')).data.unions.find(x => x.id === u.id);
+  assert.equal(row.ended_reason, 'verwitwet');
+
+  // Anything outside the vocabulary is refused into the empty answer rather
+  // than stored — the same discipline every other enumerated column has.
+  await S.PUT(`/api/unions/${u.id}`, { ended_reason: 'zerstritten' });
+  row = (await S.GET('/api/graph')).data.unions.find(x => x.id === u.id);
+  assert.equal(row.ended_reason, '');
+  await S.DEL(`/api/unions/${u.id}`);
+});
+
 test('positions save, empty coordinates are ignored', async () => {
   const out = await S.POST('/api/positions', [{ id: id.karl, x: 12.5, y: -30 }, { id: id.otto, x: '', y: null }]);
   assert.equal(out.status, 200);

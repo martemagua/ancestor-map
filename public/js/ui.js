@@ -7,8 +7,11 @@ import {
   branchesWithParents, ancestorsOf, treeOrder, suggestBranchColor, lighten,
   parentsOfP, siblingsOfP, unionsOfP, unionPartners, unionChildren,
   kinLabel, relsOf, otherEnd, otherViewsOf, lifespan, buildLabel, branchPalette,
+  UNION_ENDINGS, LIVING, relLabelFor,
 } from './store.js';
-import { FIELDS, SECTIONS, fieldsIn, fromStored, toStored, isEmpty } from './fields.js';
+import {
+  FIELDS, SECTIONS, fieldsIn, fromStored, toStored, isEmpty, fieldApplies, isDeceased,
+} from './fields.js';
 import { formatFuzzy, composeFuzzy, toParts } from './fuzzydate.js';
 import { t, LANGS, LANG_NAMES, getLang } from './i18n.js';
 
@@ -296,6 +299,10 @@ function fieldHtml(field, raw) {
         return `<input data-f="${field.key}" type="number" inputmode="numeric" value="${escapeHtml(shown === null ? '' : shown)}"${ph}>`;
       case 'bool':
         return `<input data-f="${field.key}" type="checkbox" ${value ? 'checked' : ''}>`;
+      case 'choice':
+        return `<select data-f="${field.key}">${field.choices.map(c =>
+          `<option value="${escapeHtml(c)}"${String(shown) === c ? ' selected' : ''}>${
+            escapeHtml(t(field.choiceKey + c))}</option>`).join('')}</select>`;
       default:
         return `<input data-f="${field.key}" value="${escapeHtml(shown)}"${ph}>`;
     }
@@ -433,7 +440,7 @@ export function openPerson(id) {
           <button class="relmain" data-person="${o.id}">
             <span class="kind">${relKind(r.kind).icon}</span>
             ${avatarHtml(o, 'sm')}<span class="nm">${escapeHtml(o.name)}
-            <span class="via">${escapeHtml(r.label || t('rel.' + r.kind))}</span></span>
+            <span class="via">${escapeHtml(r.label || relLabelFor(r, id))}</span></span>
           </button>
           ${canEdit() ? `<button class="reledit" data-editrel="${r.id}" title="${escapeHtml(t('ui.edit'))}">✎</button>` : ''}
         </div>`;
@@ -505,9 +512,12 @@ export function openPerson(id) {
  * fields share a row. Shared by both forms, so the quick add and the full
  * edit can never drift apart on what a field looks like.
  */
-function section(which, p) {
+function section(which, p, { at } = {}) {
   const out = [];
   for (const f of fieldsIn(which)) {
+    // A field that does not apply is left off — but never one that already
+    // holds something, or hiding it would strand the value. See fieldApplies.
+    if (!fieldApplies(f, at || p)) continue;
     const html = fieldHtml(f, p ? p[f.key] : undefined);
     const last = out[out.length - 1];
     if (f.half && last?.open) { last.html += html; last.open = false; }
@@ -518,11 +528,48 @@ function section(which, p) {
 
 /** A date and the place it happened, which is how both of them are recorded. */
 function lifeEventHtml(which, p) {
-  return `<div class="lifeevent">
+  return `<div class="lifeevent" data-life="${which}">
     ${fuzzyDateHtml(which, p?.[which] || '', { label: t('p.' + which) })}
     <label class="field"><span>${escapeHtml(t(`p.${which}_place`))}</span>
       <input data-f="${which}_place" value="${escapeHtml(p?.[`${which}_place`] || '')}" autocomplete="off"></label>
   </div>`;
+}
+
+/**
+ * The living/deceased switch and the death block it governs.
+ *
+ * Asked outright rather than read off the death date, because knowing that
+ * somebody died is a different fact from knowing when — and the fuzzy grammar
+ * cannot say the first without inventing the second. It also tells the chart
+ * whether to draw the death ring, so it earns its place twice.
+ */
+function mortalityHtml(p) {
+  const state = p?.living || (p?.death ? 'verstorben' : '');
+  return `
+    <label class="field"><span>${escapeHtml(t('f.living'))}</span>
+      <select data-f="living">${LIVING.map(c =>
+    `<option value="${escapeHtml(c)}"${state === c ? ' selected' : ''}>${escapeHtml(t('living.' + c))}</option>`).join('')}</select></label>
+    <div data-deathblock ${isDeceased({ ...p, living: state }) ? '' : 'hidden'}>
+      ${lifeEventHtml('death', p)}
+    </div>`;
+}
+
+/**
+ * Keep the death block in step with the switch — and never take away a block
+ * that has something in it, which is the same promise `fieldApplies` makes
+ * for registry fields.
+ */
+function wireMortality(root) {
+  const sel = root.querySelector('[data-f="living"]');
+  const block = root.querySelector('[data-deathblock]');
+  if (!sel || !block) return;
+  const sync = () => {
+    const filled = [...block.querySelectorAll('input')].some(i => i.value.trim());
+    block.hidden = sel.value !== 'verstorben' && !filled;
+  };
+  sel.addEventListener('change', sync);
+  block.addEventListener('change', sync);
+  sync();
 }
 
 export function openPersonForm(id) {
@@ -544,7 +591,7 @@ export function openPersonForm(id) {
       </select></label>
 
     ${lifeEventHtml('birth', p)}
-    ${lifeEventHtml('death', p)}
+    ${mortalityHtml(p)}
 
     ${section('notiz', p)}
     ${section('kopf', p)}
@@ -563,6 +610,7 @@ export function openPersonForm(id) {
   openSheet(p ? t('form.edit_person', { name: p.name }) : t('form.new_person'), body, {
     onMount(root) {
       mountFuzzyDates(root);
+      wireMortality(root);
       // Coordinates ride along with the place text. Editing the text by hand
       // drops them — they would otherwise still point at the old place; only
       // picking a suggestion (or the admin backfill) sets them.
@@ -686,7 +734,7 @@ export function openQuickAdd({ relativeOf = null } = {}) {
         <option value="m">${escapeHtml(t('sex.m'))}</option></select></label>
 
     ${lifeEventHtml('birth', null)}
-    ${lifeEventHtml('death', null)}
+    ${mortalityHtml(null)}
     </div>
 
     <div data-pane="link" hidden>
@@ -718,6 +766,7 @@ export function openQuickAdd({ relativeOf = null } = {}) {
   openSheet(t('add.title'), body, {
     onMount(root) {
       mountFuzzyDates(root);
+      wireMortality(root);
       const picker = personPicker(root.querySelector('[data-anchor]'), { selected: anchor });
       const linkPicker = personPicker(root.querySelector('[data-linkperson]'), {
         placeholder: t('add.link_ph'),
@@ -832,6 +881,9 @@ export function openUnionForm(unionId) {
         `<option value="${k}" ${u.kind === k ? 'selected' : ''}>${escapeHtml(t('union.' + k))}</option>`).join('')}</select></label>
     ${fuzzyDateHtml('started', u.started || '', { label: t('union.started') })}
     ${fuzzyDateHtml('ended', u.ended || '', { label: t('union.ended') })}
+    <label class="field"><span>${escapeHtml(t('union.ended_reason'))}</span>
+      <select data-f="ended_reason">${UNION_ENDINGS.map(e =>
+    `<option value="${escapeHtml(e)}"${(u.ended_reason || '') === e ? ' selected' : ''}>${escapeHtml(t('end.' + e))}</option>`).join('')}</select></label>
     <label class="field"><span>${escapeHtml(t('union.note'))}</span>
       <input data-f="note" value="${escapeHtml(u.note || '')}"></label>
 
@@ -858,6 +910,7 @@ export function openUnionForm(unionId) {
   openSheet(t('union.title'), body, {
     onMount(root) {
       mountFuzzyDates(root);
+      wireMortality(root);
       const exclude = [...unionPartners(unionId), ...unionChildren(unionId)];
       const picker = personPicker(root.querySelector('[data-newchild]'), { exclude });
       const partnerHost = root.querySelector('[data-newpartner]');
@@ -877,7 +930,8 @@ export function openUnionForm(unionId) {
         try {
           await api.put(`/api/unions/${unionId}`, {
             kind: val(root, 'kind'), started: val(root, 'started').trim(),
-            ended: val(root, 'ended').trim(), note: val(root, 'note'),
+            ended: val(root, 'ended').trim(), ended_reason: val(root, 'ended_reason'),
+            note: val(root, 'note'),
           });
           await refresh();
           toast(t('form.saved'));
@@ -925,6 +979,8 @@ export function openRelationshipForm(personId, rel = null) {
     <label class="field"><span>${escapeHtml(t('relf.kind'))}</span>
       <select data-f="kind">${REL_KINDS.map(k =>
         `<option value="${k.id}" ${rel?.kind === k.id ? 'selected' : ''}>${k.icon} ${escapeHtml(t('rel.' + k.id))}</option>`).join('')}</select></label>
+    <label class="field" data-dir hidden><span>${escapeHtml(t('rel.direction'))}</span>
+      <select data-f="from_id"></select></label>
     <label class="field"><span>${escapeHtml(t('relf.label'))}</span>
       <textarea data-f="label" placeholder="${escapeHtml(t('relf.label_ph'))}">${escapeHtml(rel?.label || '')}</textarea></label>
     <button class="btn primary wide" data-save style="margin-top:18px">${escapeHtml(t('ui.save'))}</button>
@@ -935,13 +991,36 @@ export function openRelationshipForm(personId, rel = null) {
     onMount(root) {
       const picker = personPicker(root.querySelector('[data-other]'), {
         selected: otherId, exclude: [personId], locked: Boolean(rel),
+        onChange: () => syncDirection(),
       });
+
+      // A guardian and a ward are not the same thing said twice, so a directed
+      // kind has to ask which end is which — spelled out with both names
+      // rather than as an abstract arrow, because "Vormund von Anna" is a
+      // sentence and "A → B" is a puzzle.
+      const dirRow = root.querySelector('[data-dir]');
+      const dirSel = root.querySelector('[data-f="from_id"]');
+      function syncDirection() {
+        const kind = relKind(val(root, 'kind'));
+        const other = S.personById[picker.value];
+        const me = S.personById[personId];
+        dirRow.hidden = !kind.directed || !other;
+        if (dirRow.hidden) return;
+        const chosen = String(rel?.from_id || personId);
+        dirSel.innerHTML = [[me, other], [other, me]].map(([from, to]) =>
+          `<option value="${from.id}"${String(from.id) === chosen ? ' selected' : ''}>${
+            escapeHtml(`${from.name} — ${t('rel.' + kind.id)} ${to.name}`)}</option>`).join('');
+      }
+      root.querySelector('[data-f="kind"]').addEventListener('change', syncDirection);
+      syncDirection();
+
       root.querySelector('[data-save]').onclick = async () => {
         if (!picker.value) return toast(t('form.name_missing'));
         try {
           await api.post('/api/relationships', {
             a_id: personId, b_id: picker.value,
             kind: val(root, 'kind'), label: val(root, 'label').trim(),
+            from_id: dirRow.hidden ? null : Number(val(root, 'from_id')) || null,
           });
           await refresh();
           toast(t('form.saved'));

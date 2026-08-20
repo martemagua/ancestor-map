@@ -13,6 +13,10 @@ import {
 } from './auth.js';
 import { fieldsByPerson, kinIndexNow, today } from './queries.js';
 import { FIELDS, toStored } from '../public/js/fields.js';
+import {
+  ids, REL_KINDS as V_REL, UNION_KINDS as V_UNION, UNION_ENDINGS as V_ENDINGS,
+  CHILD_ROLES as V_ROLES, STORY_KINDS as V_STORY,
+} from '../public/js/vocab.js';
 import { sortYear } from '../public/js/fuzzydate.js';
 
 /**
@@ -23,11 +27,16 @@ import { sortYear } from '../public/js/fuzzydate.js';
  */
 const PERSON_COLS = ['name', 'sex', 'birth', 'death', 'birth_place', 'birth_lat', 'birth_lon',
   'death_place', 'death_lat', 'death_lon', 'archived', 'x', 'y'];
-export const REL_KINDS = ['pate', 'trauzeuge', 'freunde', 'nachbarn', 'kollegen', 'sonstig'];
-export const UNION_KINDS = ['ehe', 'partnerschaft', 'unbekannt'];
-export const CHILD_ROLES = ['leiblich', 'adoptiert', 'stief', 'pflege'];
-export const STORY_KINDS = ['erlebnis', 'anekdote', 'geburt', 'taufe', 'hochzeit', 'umzug',
-  'auswanderung', 'beruf', 'krieg', 'tod', 'sonstiges'];
+// The vocabularies come from the one list both sides read — see vocab.js. A
+// kind the form offers and the server refuses is a bug that only shows up
+// with a real family in front of you.
+export const REL_KINDS = ids(V_REL);
+export const UNION_KINDS = ids(V_UNION);
+export const UNION_ENDINGS = V_ENDINGS;
+export const CHILD_ROLES = V_ROLES;
+export const STORY_KINDS = ids(V_STORY);
+/** Which relationship kinds carry a direction, and so honour `from_id`. */
+const DIRECTED = new Set(V_REL.filter(k => k.directed).map(k => k.id));
 
 /**
  * Branch colours are painted straight into a style attribute, so a value like
@@ -484,14 +493,15 @@ export function savePositions(body) {
 
 // ---------------------------------------------------------------- unions
 
-function createUnionRow({ partners = [], kind, started = '', ended = '', note = '' }) {
+function createUnionRow({ partners = [], kind, started = '', ended = '', ended_reason = '', note = '' }) {
   const ids = [...new Set(partners.map(Number).filter(Boolean))];
   if (!ids.length) throw bad('err.invalid');
   if (ids.length > 2) throw bad('err.too_many_partners');
   for (const pid of ids) if (!personExists(pid)) throw bad('err.person_missing');
-  const r = db.prepare('INSERT INTO unions (kind,started,started_year,ended,ended_year,note) VALUES (?,?,?,?,?,?)')
+  const r = db.prepare(`INSERT INTO unions (kind,started,started_year,ended,ended_year,ended_reason,note)
+    VALUES (?,?,?,?,?,?,?)`)
     .run(oneOf(kind, UNION_KINDS, 'unbekannt'), String(started || ''), sortYear(started),
-      String(ended || ''), sortYear(ended), String(note || ''));
+      String(ended || ''), sortYear(ended), oneOf(ended_reason, UNION_ENDINGS, ''), String(note || ''));
   const id = Number(r.lastInsertRowid);
   const add = db.prepare('INSERT INTO union_partners (union_id,person_id) VALUES (?,?)');
   for (const pid of ids) add.run(id, pid);
@@ -533,6 +543,10 @@ export function updateUnion(id, body) {
     if ('ended' in body) {
       sets.push('ended=?', 'ended_year=?');
       vals.push(String(body.ended || ''), sortYear(body.ended));
+    }
+    if ('ended_reason' in body) {
+      sets.push('ended_reason=?');
+      vals.push(oneOf(body.ended_reason, UNION_ENDINGS, ''));
     }
     if ('note' in body) { sets.push('note=?'); vals.push(String(body.note || '')); }
     if (sets.length) db.prepare(`UPDATE unions SET ${sets.join(',')} WHERE id=?`).run(...vals, Number(id));
@@ -610,14 +624,30 @@ export function removeChild(unionId, childId) {
 
 // ---------------------------------------------------------------- relationships
 
+/**
+ * Which end a directed relationship points away from — the guardian, the
+ * master, the mentor. Normalised on every write, the way a family degree's
+ * elder is: a `from_id` outside the pair is meaningless and dropped, and an
+ * undirected kind cannot keep one at all, so changing a kind from Vormund to
+ * Freunde can never leave a stale direction behind to be read later.
+ */
+function directionFor(kind, fromId, a, b) {
+  if (!DIRECTED.has(kind)) return null;
+  const from = Number(fromId) || 0;
+  return from === a || from === b ? from : null;
+}
+
 export function upsertRelationship(body) {
   const [a, b] = pair(body.a_id, body.b_id);
   if (!a || !b || a === b) throw bad('err.invalid');
   if (!personExists(a) || !personExists(b)) throw bad('err.person_missing');
   const kind = oneOf(body.kind, REL_KINDS, 'sonstig');
   const label = String(body.label || '').trim().slice(0, 400);
-  const r = db.prepare(`INSERT INTO relationships (a_id,b_id,kind,label) VALUES (?,?,?,?)
-    ON CONFLICT(a_id,b_id) DO UPDATE SET kind=excluded.kind, label=excluded.label`).run(a, b, kind, label);
+  const from = directionFor(kind, body.from_id, a, b);
+  const r = db.prepare(`INSERT INTO relationships (a_id,b_id,kind,label,from_id) VALUES (?,?,?,?,?)
+    ON CONFLICT(a_id,b_id) DO UPDATE SET
+      kind=excluded.kind, label=excluded.label, from_id=excluded.from_id`)
+    .run(a, b, kind, label, from);
   return { id: Number(r.lastInsertRowid) };
 }
 
@@ -625,8 +655,16 @@ export function updateRelationship(id, body) {
   const row = db.prepare('SELECT * FROM relationships WHERE id=?').get(Number(id));
   if (!row) throw gone();
   const sets = [], vals = [];
-  if ('kind' in body) { sets.push('kind=?'); vals.push(oneOf(body.kind, REL_KINDS, 'sonstig')); }
+  const kind = 'kind' in body ? oneOf(body.kind, REL_KINDS, 'sonstig') : row.kind;
+  if ('kind' in body) { sets.push('kind=?'); vals.push(kind); }
   if ('label' in body) { sets.push('label=?'); vals.push(String(body.label || '').trim().slice(0, 400)); }
+  // The direction is re-derived whenever either half of it could have moved,
+  // so a kind change alone is enough to clear a direction that no longer means
+  // anything.
+  if ('from_id' in body || 'kind' in body) {
+    sets.push('from_id=?');
+    vals.push(directionFor(kind, 'from_id' in body ? body.from_id : row.from_id, row.a_id, row.b_id));
+  }
   if (sets.length) db.prepare(`UPDATE relationships SET ${sets.join(',')} WHERE id=?`).run(...vals, Number(id));
   return { ok: true };
 }

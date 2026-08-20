@@ -5,6 +5,9 @@
 import { api } from './api.js';
 import { t, getLang } from './i18n.js';
 import { FIELDS } from './fields.js';
+import {
+  REL_KINDS, UNION_KINDS, UNION_ENDINGS, CHILD_ROLES, STORY_KINDS, LIVING,
+} from './vocab.js';
 import { sortYear, lifespan as lifespanOf } from './fuzzydate.js';
 import {
   buildKinIndex, relate, labelFor, parentsOf as kinParents,
@@ -118,25 +121,21 @@ export function lighten(hex, amount = 0.3) {
   return `#${mix(parseInt(m[1], 16))}${mix(parseInt(m[2], 16))}${mix(parseInt(m[3], 16))}`;
 }
 
-export const REL_KINDS = [
-  { id: 'pate', icon: '🕊️' },
-  { id: 'trauzeuge', icon: '💍' },
-  { id: 'freunde', icon: '🙂' },
-  { id: 'nachbarn', icon: '🚪' },
-  { id: 'kollegen', icon: '💼' },
-  { id: 'sonstig', icon: '🔗' },
-];
+export { REL_KINDS, UNION_KINDS, UNION_ENDINGS, CHILD_ROLES, STORY_KINDS, LIVING };
 export const relKind = id => REL_KINDS.find(k => k.id === id) || REL_KINDS[REL_KINDS.length - 1];
 
-export const UNION_KINDS = ['ehe', 'partnerschaft', 'unbekannt'];
-export const CHILD_ROLES = ['leiblich', 'adoptiert', 'stief', 'pflege'];
-export const STORY_KINDS = [
-  { id: 'erlebnis', icon: '✨' }, { id: 'anekdote', icon: '💬' }, { id: 'geburt', icon: '👶' },
-  { id: 'taufe', icon: '💧' }, { id: 'hochzeit', icon: '💒' }, { id: 'umzug', icon: '📦' },
-  { id: 'auswanderung', icon: '🚢' }, { id: 'beruf', icon: '🛠️' }, { id: 'krieg', icon: '🕯️' },
-  { id: 'tod', icon: '🖤' }, { id: 'sonstiges', icon: '📎' },
-];
-export const storyKind = id => STORY_KINDS.find(k => k.id === id) || STORY_KINDS[0];
+/**
+ * What a described relationship says on somebody's card. A directed kind
+ * reads one way from the end it points away from and the other way from the
+ * end it points at — "Vormund von Anna" against "Mündel von Josef".
+ */
+export function relLabelFor(r, personId) {
+  const k = relKind(r.kind);
+  if (!k.directed || !r.from_id) return t('rel.' + k.id);
+  return t(`rel.${k.id}${Number(r.from_id) === Number(personId) ? '' : '_rev'}`);
+}
+
+export const storyKind = id => STORY_KINDS.find(k => k.id === id) || STORY_KINDS[STORY_KINDS.length - 1];
 
 // ------------------------------------------------------------------ loading
 
