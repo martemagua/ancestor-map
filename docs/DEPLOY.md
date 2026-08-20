@@ -91,13 +91,25 @@ published `:latest`.
 - **Stable**: same, after a merge to `main`. Static files are served
   `no-cache`, so every browser runs the new version on its next load.
 
-## Reaching it from outside the LAN
+## HTTPS
 
-Anything beyond the LAN wants TLS in front — Tailscale (`tailscale serve`)
-is the zero-config way; a reverse proxy (Caddy, nginx, Traefik) works too.
-Set `TRUST_PROXY: "1"` in the compose environment when a proxy is in front,
-so rate limiting sees real client addresses. Installing the app on a phone
-(PWA) requires a secure origin.
+The container serves **plain HTTP** and nothing else — `https://NAS-IP:4323`
+will always fail, because there is no TLS inside it. That is deliberate:
+certificates belong to whatever sits in front, not to the app.
+
+On the LAN, `http://NAS-IP:4323` is the address. For HTTPS — which you want
+for anything reachable beyond the LAN, and which the phone needs before it
+will install the app to the home screen — put one of these in front:
+
+- **Tailscale** (simplest, no certificates to manage, no ports opened):
+  `tailscale serve --bg --https=443 http://localhost:4323`
+  → reachable at `https://your-nas.your-tailnet.ts.net` from any device on
+  your tailnet.
+- **A reverse proxy** — Caddy gets a Let's Encrypt certificate on its own;
+  nginx or Traefik work as well. TrueNAS also ships reverse-proxy apps.
+
+Whatever you use, set `TRUST_PROXY: "1"` in the compose environment so the
+login rate limiting sees real client addresses instead of the proxy's.
 
 ## Backups
 
