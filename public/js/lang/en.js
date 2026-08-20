@@ -271,6 +271,7 @@ export default {
   'add.link_self': 'Not with themselves.',
   'add.link_go': 'Link',
   'add.child_role': 'How did the child join the family?',
+  'add.which_union': 'From which union?',
   'f.full_name': 'Full name',
   'f.full_name_ph': 'All given names, as the documents spell them',
   'add.more': 'More details',

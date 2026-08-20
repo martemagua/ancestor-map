@@ -271,6 +271,7 @@ export default {
   'add.link_self': 'Consigo mesmo não dá.',
   'add.link_go': 'Vincular',
   'add.child_role': 'Como a criança chegou à família?',
+  'add.which_union': 'De qual união?',
   'f.full_name': 'Nome completo',
   'f.full_name_ph': 'Todos os nomes, como nos documentos',
   'add.more': 'Mais detalhes',

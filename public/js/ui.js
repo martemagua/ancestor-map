@@ -753,30 +753,72 @@ function relationBlockHtml() {
     <label class="field" data-how-kind><span>${escapeHtml(t('union.kind'))}</span>
       <select data-f="union_kind">${UNION_KINDS.map(k =>
     `<option value="${k}">${escapeHtml(t('union.' + k))}</option>`).join('')}</select></label>
+    <label class="field" data-how-union hidden><span>${escapeHtml(t('add.which_union'))}</span>
+      <select data-f="which_union"></select></label>
     <label class="field" data-how-role hidden><span>${escapeHtml(t('add.child_role'))}</span>
       <select data-f="child_role">${CHILD_ROLES.map(r =>
     `<option value="${r}">${escapeHtml(t('role.' + r))}</option>`).join('')}</select></label>`;
 }
 
 /** Show the controls the chosen relation actually needs, hide the rest. */
-function wireRelationBlock(root) {
+/**
+ * Keep the relation block honest about what it still needs to know.
+ *
+ * The one that matters is the union picker. "Child of Opa" is unambiguous
+ * while Opa has one marriage and meaningless once he has two — and rather
+ * than guess, the server used to open a third, one-parent family and hang
+ * the child off that. Correct, in that it invented nothing, but it drew a
+ * stranger's household on the chart and there was no hint that a question
+ * had gone unanswered. So the form asks it instead, and only when there is
+ * something to ask.
+ *
+ * A step-parent gets the role picker too: "Elternteil von X" where X's
+ * parents are both already seated is exactly how a step-child is recorded,
+ * and the server has always accepted the role — the form simply never
+ * offered it.
+ */
+function wireRelationBlock(root, anchorPicker) {
   const how = root.querySelector('[data-f="how"]');
+  const unionRow = root.querySelector('[data-how-union]');
+  const unionSel = root.querySelector('[data-f="which_union"]');
+
   const sync = () => {
     root.querySelector('[data-how-kind]').hidden = !['partner', 'parent_of'].includes(how.value);
-    root.querySelector('[data-how-role]').hidden = !how.value.startsWith('child');
+    root.querySelector('[data-how-role]').hidden = !['child_of_person', 'parent_of'].includes(how.value);
+
+    const anchor = anchorPicker?.value;
+    const unions = how.value === 'child_of_person' && anchor ? unionsOfP(anchor) : [];
+    unionRow.hidden = unions.length < 2;
+    if (unionRow.hidden) return;
+    unionSel.innerHTML = unions.map(uid => {
+      const u = S.unionById[uid];
+      const others = unionPartners(uid).filter(x => x !== anchor)
+        .map(x => S.personById[x]?.name).filter(Boolean);
+      const when = u?.started ? ` · ${formatFuzzy(u.started)}` : '';
+      return `<option value="${uid}">${escapeHtml(
+        (others.join(' & ') || t('union.' + (u?.kind || 'unbekannt'))) + when)}</option>`;
+    }).join('');
   };
   how.addEventListener('change', sync);
-  sync();
+  return sync;
 }
 
 /** The connect payload the relation block currently describes, or null. */
 function readRelationBlock(root, picker) {
   const how = val(root, 'how');
   if (!how || !picker.value) return null;
+  const role = { role: val(root, 'child_role') };
+  // Once the picker has named a particular marriage, the answer is that
+  // union — not "a child of this person", which is the question that could
+  // not be answered in the first place.
+  const chosen = root.querySelector('[data-how-union]');
+  if (how === 'child_of_person' && chosen && !chosen.hidden) {
+    return { type: 'child_of_union', id: Number(val(root, 'which_union')), ...role };
+  }
   return {
     type: how, id: picker.value,
     ...(['partner', 'parent_of'].includes(how) ? { kind: val(root, 'union_kind') } : {}),
-    ...(how.startsWith('child') ? { role: val(root, 'child_role') } : {}),
+    ...(['child_of_person', 'parent_of'].includes(how) ? role : {}),
   };
 }
 
@@ -830,11 +872,15 @@ export function openQuickAdd({ relativeOf = null } = {}) {
     onMount(root) {
       mountFuzzyDates(root);
       wireMortality(root);
-      const picker = personPicker(root.querySelector('[data-anchor]'), { selected: anchor });
+      let syncRelation = () => {};
+      const picker = personPicker(root.querySelector('[data-anchor]'), {
+        selected: anchor, onChange: () => syncRelation(),
+      });
       const linkPicker = personPicker(root.querySelector('[data-linkperson]'), {
         placeholder: t('add.link_ph'),
       });
-      wireRelationBlock(root);
+      syncRelation = wireRelationBlock(root, picker);
+      syncRelation();
 
       // The two modes: type somebody in, or place somebody already typed in.
       let mode = 'new';

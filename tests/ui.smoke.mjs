@@ -210,6 +210,60 @@ try {
     if (!painted) throw new Error('tree canvas is blank');
   });
 
+  // "Child of X" is unambiguous while X has one marriage and meaningless once
+  // X has two. Rather than silently opening a third, one-parent family, the
+  // form asks which marriage — and only when there is something to ask.
+  await step('a remarriage makes the form ask which marriage a child belongs to', async () => {
+    const before = await page.evaluate(async () => (await import('/js/store.js')).S.unions.length);
+    // Wilhelm already has one union (with the proband's side). Give him a second.
+    await page.click('#fab');
+    await page.waitForSelector('.sheet.show [data-f="name"]');
+    await page.fill('.sheet.show [data-f="name"]', 'Zweite Frau');
+    await page.selectOption('.sheet.show [data-f="how"]', 'partner');
+    await page.evaluate(async () => {
+      const { S } = await import('/js/store.js');
+      const w = S.persons.find(p => p.name === 'Wilhelm Probe');
+      document.querySelector('.sheet.show [data-anchor]').dataset.value = w.id;
+    });
+    await page.click('.sheet.show [data-save]');
+    await page.waitForSelector('.sheet.show .phead', { timeout: 5000 });
+    await page.click('.sheet.show [data-close]');
+
+    // Now add a child of Wilhelm: the union picker must appear.
+    await page.click('#fab');
+    await page.waitForSelector('.sheet.show [data-f="name"]');
+    await page.fill('.sheet.show [data-f="name"]', 'Halbkind Probe');
+    await page.selectOption('.sheet.show [data-f="how"]', 'child_of_person');
+    await page.evaluate(async () => {
+      const { S } = await import('/js/store.js');
+      const w = S.persons.find(p => p.name === 'Wilhelm Probe');
+      const host = document.querySelector('.sheet.show [data-anchor]');
+      host.dataset.value = w.id;
+      host.dispatchEvent(new Event('change', { bubbles: true }));
+      document.querySelector('.sheet.show [data-f="how"]').dispatchEvent(new Event('change'));
+    });
+    const asks = await page.evaluate(() =>
+      !document.querySelector('.sheet.show [data-how-union]').hidden);
+    if (!asks) throw new Error('the form did not ask which marriage');
+
+    const opts = await page.evaluate(() =>
+      [...document.querySelectorAll('.sheet.show [data-f="which_union"] option')].length);
+    if (opts !== 2) throw new Error(`expected both marriages on offer, got ${opts}`);
+
+    // Pick the second marriage and save: no stray one-parent union appears.
+    await page.evaluate(() => {
+      const sel = document.querySelector('.sheet.show [data-f="which_union"]');
+      sel.selectedIndex = 1;
+    });
+    await page.click('.sheet.show [data-save]');
+    await page.waitForSelector('.sheet.show .phead', { timeout: 5000 });
+    const after = await page.evaluate(async () => (await import('/js/store.js')).S.unions.length);
+    if (after !== before + 1) {
+      throw new Error(`a child of an existing marriage created ${after - before - 1} extra union(s)`);
+    }
+    await page.click('.sheet.show [data-close]');
+  });
+
   // Somebody else's perspective is a place you visit, not a state you can
   // get stuck in: the × comes home, and so does opening the app again.
   await step("another perspective is a visit, and × comes home", async () => {

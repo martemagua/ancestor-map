@@ -271,6 +271,7 @@ export default {
   'add.link_self': 'Mit sich selbst geht nicht.',
   'add.link_go': 'Verbinden',
   'add.child_role': 'Wie kam das Kind in die Familie?',
+  'add.which_union': 'Aus welcher Verbindung?',
   'f.full_name': 'Vollständiger Name',
   'f.full_name_ph': 'Alle Vornamen, wie in den Dokumenten',
   'add.more': 'Mehr Angaben',
